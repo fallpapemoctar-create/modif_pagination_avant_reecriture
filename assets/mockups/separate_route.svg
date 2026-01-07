@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="700" viewBox="0 0 900 700">
+  <rect width="900" height="700" fill="#f8fafc"/>
+  <!-- AppBar -->
+  <rect x="0" y="0" width="900" height="64" fill="#1e88e5"/>
+  <text x="24" y="40" font-family="Arial" font-size="20" fill="white">Gesplanet</text>
+
+  <!-- Interpreters list page -->
+  <rect x="24" y="84" width="852" height="256" fill="#ffffff" stroke="#e5e7eb" rx="8"/>
+  <text x="44" y="110" font-family="Arial" font-size="16" fill="#374151">Interpreters</text>
+  <g font-family="Arial" font-size="14" fill="#111827">
+    <rect x="44" y="130" width="820" height="56" fill="#f8fafc" stroke="#e6eefb" rx="6"/>
+    <text x="64" y="162">Alice • fr, en  —  [View missions ▶]</text>
+    <rect x="44" y="196" width="820" height="56" fill="#ffffff" stroke="#e5e7eb" rx="6"/>
+    <text x="64" y="228">Bob • es, en  —  [View missions ▶]</text>
+  </g>
+
+  <!-- Arrow to detail page -->
+  <text x="380" y="360" font-family="Arial" font-size="24" fill="#6b7280">Click → opens full-screen detail page</text>
+
+  <!-- Detail page mockup (separate route) -->
+  <rect x="24" y="400" width="852" height="260" fill="#ffffff" stroke="#e5e7eb" rx="8"/>
+  <text x="44" y="430" font-family="Arial" font-size="16" fill="#374151">Missions for Alice</text>
+  <g font-family="Arial" font-size="14" fill="#111827">
+    <rect x="44" y="452" width="820" height="56" fill="#f8fafc" stroke="#e6eefb" rx="6"/>
+    <text x="64" y="484">Mission #123 — 2025-06-01 • Paris</text>
+    <rect x="44" y="516" width="820" height="56" fill="#ffffff" stroke="#e5e7eb" rx="6"/>
+    <text x="64" y="548">Mission #124 — 2025-06-10 • Lyon</text>
+  </g>
+
+  <text x="24" y="684" font-family="Arial" font-size="12" fill="#9ca3af">Separate page per interpreter — consistent on mobile and desktop</text>
+</svg>

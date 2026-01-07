@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/user.dart';
 
 class AdminService {
-  static const String baseUrl = "http://localhost/gesplanet_01/ami/api/admin/";
+  static const String baseUrl = "http://ami.yourbizapps.com/api/admin/";
 
   /// Returns a map with keys: 'users' => list of users, 'summary' => map of summary values.
   static Future<Map<String, dynamic>> getUsers() async {

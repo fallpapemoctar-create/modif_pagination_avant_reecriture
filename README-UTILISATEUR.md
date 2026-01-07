@@ -24,7 +24,7 @@ flutter analyze
 flutter run -d windows
 ```
 
-- Backend API : le projet utilise un serveur local (ex. `http://localhost/gesplanet_01/ami/api/...`). Vérifiez `lib/services/*` pour les endpoints.
+- Backend API : le projet utilise un serveur local (ex. `http://ami.yourbizapps.com/api/...`). Vérifiez `lib/services/*` pour les endpoints.
 
 ## Authentification et déconnexion
 - Login : utilisez l'écran de connexion. La route `/login` est utilisée pour rediriger après la déconnexion.
@@ -71,12 +71,12 @@ Exemples `curl` :
 
 JSON :
 ```bash
-curl -X POST http://localhost/gesplanet_01/ami/api/add_mission.php -H "Content-Type: application/json" -d '{"interpreter_id":1,"reference_devis":"R001","montant_mission":100}'
+curl -X POST http://ami.yourbizapps.com/api/add_mission.php -H "Content-Type: application/json" -d '{"interpreter_id":1,"reference_devis":"R001","montant_mission":100}'
 ```
 
 Form-encodé :
 ```bash
-curl -X POST http://localhost/gesplanet_01/ami/api/add_mission.php -d "interpreter_id=1&reference_devis=R001&montant_mission=100"
+curl -X POST http://ami.yourbizapps.com/api/add_mission.php -d "interpreter_id=1&reference_devis=R001&montant_mission=100"
 ```
 
 ## Diagnostics & dépannage

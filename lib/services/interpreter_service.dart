@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/interpreter.dart';
 
 class InterpreterService {
-  static const String baseUrl = "http://localhost/gesplanet_01/ami/api/";
+  static const String baseUrl = "http://ami.yourbizapps.com/api/";
 
   // -----------------------------
   // GET : Liste des interprètes

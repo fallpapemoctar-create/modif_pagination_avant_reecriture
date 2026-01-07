@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#f5f7fa"/>
+  <!-- AppBar -->
+  <rect x="0" y="0" width="1200" height="64" fill="#1e88e5" rx="0"/>
+  <text x="24" y="40" font-family="Arial" font-size="20" fill="white">Gesplanet</text>
+
+  <!-- Left pane: interpreters list -->
+  <rect x="16" y="84" width="360" height="592" fill="#ffffff" stroke="#d1d5db" rx="8"/>
+  <text x="36" y="110" font-family="Arial" font-size="16" fill="#374151">Interpreters</text>
+  <!-- list items -->
+  <g fill="#111827" font-family="Arial" font-size="14">
+    <rect x="28" y="130" width="328" height="44" fill="#eef2ff" rx="6"/>
+    <text x="44" y="158">Alice • fr, en</text>
+    <rect x="28" y="186" width="328" height="44" fill="#ffffff" rx="6" stroke="#e5e7eb"/>
+    <text x="44" y="214">Bob • es, en</text>
+    <rect x="28" y="242" width="328" height="44" fill="#ffffff" rx="6" stroke="#e5e7eb"/>
+    <text x="44" y="270">Carol • de, fr</text>
+  </g>
+
+  <!-- Right pane: missions for selected interpreter -->
+  <rect x="392" y="84" width="792" height="592" fill="#ffffff" stroke="#d1d5db" rx="8"/>
+  <text x="412" y="110" font-family="Arial" font-size="16" fill="#374151">Missions for Alice</text>
+  <!-- mission cards -->
+  <g font-family="Arial" font-size="14" fill="#111827">
+    <rect x="412" y="130" width="740" height="88" fill="#f8fafc" stroke="#e6eefb" rx="6"/>
+    <text x="432" y="160">Mission #123 — 2025-06-01 • Paris</text>
+    <text x="432" y="182" font-size="12" fill="#6b7280">Client: ExampleCorp • Fee: 200€</text>
+
+    <rect x="412" y="228" width="740" height="88" fill="#ffffff" stroke="#e5e7eb" rx="6"/>
+    <text x="432" y="258">Mission #124 — 2025-06-10 • Lyon</text>
+    <text x="432" y="280" font-size="12" fill="#6b7280">Client: AnotherCo • Fee: 150€</text>
+
+    <rect x="412" y="326" width="740" height="88" fill="#ffffff" stroke="#e5e7eb" rx="6"/>
+    <text x="432" y="356">Mission #125 — 2025-07-02 • Marseille</text>
+    <text x="432" y="378" font-size="12" fill="#6b7280">Client: ThirdOrg • Fee: 300€</text>
+  </g>
+
+  <!-- Note -->
+  <text x="24" y="690" font-family="Arial" font-size="12" fill="#9ca3af">Desktop: split view — Mobile: tap item to open full-screen detail</text>
+</svg>
