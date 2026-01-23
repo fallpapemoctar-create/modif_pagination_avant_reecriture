@@ -37,6 +37,14 @@ build/web/
 .vscode/
 *.iml
 
+# Visual Studio local workspace files (keep out of VCS)
+.vs/
+
+# JetBrains project files
+*.iws
+*.ipr
+
+
 # Logs
 *.log
 
@@ -65,6 +73,13 @@ migrate_working_dir/
 *.ipr
 *.iws
 .idea/
+
+# OS-specific cruft
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+Icon?
+__MACOSX/
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
