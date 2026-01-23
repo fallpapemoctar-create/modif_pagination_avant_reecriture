@@ -172,9 +172,11 @@ class _AdminPageState extends State<AdminPage> {
 
 		return Scaffold(
 			appBar: AppBar(title: const Text('Administration')),
-			body: ResponsiveContainer(
-				child: Column(
-					children: [
+			body: Container(
+				color: Colors.white,
+				child: ResponsiveContainer(
+					child: Column(
+						children: [
 						// Search bar
 						Padding(
 							padding: EdgeInsets.symmetric(
@@ -206,6 +208,7 @@ class _AdminPageState extends State<AdminPage> {
 						),
 					],
 				),
+			),
 			),
 		);
 	}
@@ -306,75 +309,75 @@ class _AdminPageState extends State<AdminPage> {
 
 		return Column(
 			children: [
-				// Header
+				// Header DSFR
 				Container(
 					decoration: BoxDecoration(
-						color: theme.colorScheme.primary,
-						borderRadius: BorderRadius.vertical(
-							top: Radius.circular(8),
+						color: const Color(0xFF000091), // Blue France
+						borderRadius: const BorderRadius.vertical(
+							top: Radius.circular(4),
 						),
 					),
-					padding: EdgeInsets.all(ResponsiveHelper.getSpacing(context)),
+					padding: EdgeInsets.all(ResponsiveHelper.getSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
 					child: Row(
 						children: [
 							Expanded(
 								child: Text(
 									'Nom Prénom',
 									style: TextStyle(
-										fontWeight: FontWeight.bold,
+										fontWeight: FontWeight.w700,
 										fontSize: ResponsiveHelper.getFontSize(context, base: 14),
-										color: theme.colorScheme.onPrimary,
+										color: Colors.white,
 									),
 								),
 							),
-							SizedBox(width: 16),
+							const SizedBox(width: 16),
 							SizedBox(
 								width: interpWidth,
 								child: Text(
 									'Interprètes',
 									textAlign: TextAlign.center,
 									style: TextStyle(
-										fontWeight: FontWeight.bold,
-										color: theme.colorScheme.onPrimary,
+										fontWeight: FontWeight.w700,
+										color: Colors.white,
 										fontSize: ResponsiveHelper.getFontSize(context, base: 13),
 									),
 								),
 							),
-							SizedBox(width: 16),
+							const SizedBox(width: 16),
 							SizedBox(
 								width: otherRightWidth,
 								child: Text(
 									'Missions',
 									textAlign: TextAlign.center,
 									style: TextStyle(
-										fontWeight: FontWeight.bold,
-										color: theme.colorScheme.onPrimary,
+										fontWeight: FontWeight.w700,
+										color: Colors.white,
 										fontSize: ResponsiveHelper.getFontSize(context, base: 13),
 									),
 								),
 							),
-							SizedBox(width: 16),
+							const SizedBox(width: 16),
 							SizedBox(
 								width: otherRightWidth,
 								child: Text(
 									'Admin',
 									textAlign: TextAlign.center,
 									style: TextStyle(
-										fontWeight: FontWeight.bold,
-										color: theme.colorScheme.onPrimary,
+										fontWeight: FontWeight.w700,
+										color: Colors.white,
 										fontSize: ResponsiveHelper.getFontSize(context, base: 13),
 									),
 								),
 							),
-							SizedBox(width: 16),
+							const SizedBox(width: 16),
 							SizedBox(
 								width: 120,
 								child: Text(
 									'Actions',
 									textAlign: TextAlign.right,
 									style: TextStyle(
-										fontWeight: FontWeight.bold,
-										color: theme.colorScheme.onPrimary,
+										fontWeight: FontWeight.w700,
+										color: Colors.white,
 										fontSize: ResponsiveHelper.getFontSize(context, base: 13),
 									),
 								),
@@ -382,112 +385,131 @@ class _AdminPageState extends State<AdminPage> {
 						],
 					),
 				),
-				SizedBox(height: 8),
+				const SizedBox(height: 2),
 				
-				// List
+				// List DSFR
 				Expanded(
-					child: Scrollbar(
-						thumbVisibility: true,
-						controller: _listScrollController,
-						child: ListView.builder(
+					child: Container(
+						decoration: BoxDecoration(
+							color: Colors.white,
+							border: Border.all(color: const Color(0xFFDDDDDD)),
+							borderRadius: const BorderRadius.vertical(
+								bottom: Radius.circular(4),
+							),
+						),
+						child: Scrollbar(
+							thumbVisibility: true,
 							controller: _listScrollController,
-							itemCount: _filtered.length,
-							itemBuilder: (context, i) {
-								final u = _filtered[i];
-								final rowColor = (i % 2 == 0) ? Colors.white : theme.colorScheme.surface.withOpacity(0.5);
-								
-								return Container(
-									decoration: BoxDecoration(
-										color: rowColor,
-										border: Border(
-											bottom: BorderSide(
-												color: theme.dividerColor,
+							child: ListView.builder(
+								controller: _listScrollController,
+								itemCount: _filtered.length,
+								itemBuilder: (context, i) {
+									final u = _filtered[i];
+									final rowColor = (i % 2 == 0) ? Colors.white : const Color(0xFFF6F6F6); // Alternance DSFR
+									
+									return Container(
+										decoration: BoxDecoration(
+											color: rowColor,
+											border: const Border(
+												bottom: BorderSide(
+													color: Color(0xFFDDDDDD),
+													width: 1,
+												),
 											),
 										),
-									),
-									padding: EdgeInsets.symmetric(
-										vertical: ResponsiveHelper.getSpacing(context),
-										horizontal: ResponsiveHelper.getSpacing(context),
-									),
-									child: Row(
-										children: [
-											Expanded(
-												child: Column(
-													crossAxisAlignment: CrossAxisAlignment.start,
-													children: [
-														Text(
-															u.fullname,
-															style: TextStyle(
-																fontSize: ResponsiveHelper.getFontSize(context, base: 13),
-																fontWeight: FontWeight.w600,
+										padding: EdgeInsets.symmetric(
+											vertical: ResponsiveHelper.getSpacing(context, mobile: 12, desktop: 14),
+											horizontal: ResponsiveHelper.getSpacing(context, mobile: 12, desktop: 16),
+										),
+										child: Row(
+											children: [
+												Expanded(
+													child: Column(
+														crossAxisAlignment: CrossAxisAlignment.start,
+														children: [
+															Text(
+																u.fullname,
+																style: TextStyle(
+																	fontSize: ResponsiveHelper.getFontSize(context, base: 14),
+																	fontWeight: FontWeight.w600,
+																	color: const Color(0xFF161616),
+																),
 															),
-														),
-														SizedBox(height: 4),
-														Text(
-															u.email,
-															style: TextStyle(
-																fontSize: ResponsiveHelper.getFontSize(context, base: 11),
-																color: theme.textTheme.bodySmall?.color,
+															const SizedBox(height: 4),
+															Text(
+																u.email,
+																style: TextStyle(
+																	fontSize: ResponsiveHelper.getFontSize(context, base: 12),
+																	color: const Color(0xFF666666),
+																),
 															),
-														),
-													],
-												),
-											),
-											Container(
-												width: 1,
-												height: 48,
-												margin: const EdgeInsets.symmetric(horizontal: 12),
-												color: theme.dividerColor,
-											),
-											SizedBox(
-												width: interpWidth,
-												child: Center(
-													child: Switch(
-														value: u.canManageInterpreters,
-														onChanged: (v) => _toggleRight(u, 'interpreters'),
+														],
 													),
 												),
-											),
-											SizedBox(
-												width: otherRightWidth,
-												child: Center(
-													child: Switch(
-														value: u.canManageMissions,
-														onChanged: (v) => _toggleRight(u, 'missions'),
+												Container(
+													width: 1,
+													height: 48,
+													margin: const EdgeInsets.symmetric(horizontal: 12),
+													color: const Color(0xFFDDDDDD),
+												),
+												SizedBox(
+													width: interpWidth,
+													child: Center(
+														child: Switch(
+															value: u.canManageInterpreters,
+															onChanged: (v) => _toggleRight(u, 'interpreters'),
+															activeColor: const Color(0xFF000091), // Blue France
+															activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
+														),
 													),
 												),
-											),
-											SizedBox(
-												width: otherRightWidth,
-												child: Center(
-													child: Switch(
-														value: u.isAdmin,
-														onChanged: (v) => _toggleRight(u, 'admin'),
+												SizedBox(
+													width: otherRightWidth,
+													child: Center(
+														child: Switch(
+															value: u.canManageMissions,
+															onChanged: (v) => _toggleRight(u, 'missions'),
+															activeColor: const Color(0xFF000091),
+															activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
+														),
 													),
 												),
-											),
-											SizedBox(
-												width: 120,
-												child: Row(
-													mainAxisAlignment: MainAxisAlignment.end,
-													children: [
-														IconButton(
-															tooltip: 'Modifier',
-															icon: const Icon(Icons.edit, color: Colors.blue),
-															onPressed: () => _showEditDialog(u),
+												SizedBox(
+													width: otherRightWidth,
+													child: Center(
+														child: Switch(
+															value: u.isAdmin,
+															onChanged: (v) => _toggleRight(u, 'admin'),
+															activeColor: const Color(0xFF000091),
+															activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
 														),
-														IconButton(
-															tooltip: 'Supprimer',
-															icon: const Icon(Icons.delete, color: Colors.red),
-															onPressed: () => _confirmDelete(u),
-														),
-													],
+													),
 												),
-											),
-										],
-									),
-								);
-							},
+												SizedBox(
+													width: 120,
+													child: Row(
+														mainAxisAlignment: MainAxisAlignment.end,
+														children: [
+															IconButton(
+																tooltip: 'Modifier',
+																icon: const Icon(Icons.edit, color: Color(0xFF000091), size: 20),
+																onPressed: () => _showEditDialog(u),
+																splashRadius: 20,
+															),
+															IconButton(
+																tooltip: 'Supprimer',
+																icon: const Icon(Icons.delete, color: Color(0xFFCE0500), size: 20),
+																onPressed: () => _confirmDelete(u),
+																splashRadius: 20,
+															),
+														],
+													),
+												),
+											],
+										),
+									);
+								},
+							),
 						),
 					),
 				),

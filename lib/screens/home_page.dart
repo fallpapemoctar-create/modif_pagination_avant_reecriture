@@ -44,47 +44,117 @@ class HomePage extends StatelessWidget {
     return DefaultTabController(
       length: tabs.length,
       child: Scaffold(
+        backgroundColor: const Color(0xFFF6F6F6),
         appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF161616),
+          elevation: 0,
+          toolbarHeight: 72,
           title: Row(
             children: [
-              ClipOval(
-                child: Image.asset(
-                  'assets/logo.png',
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  errorBuilder: (c, e, s) => Container(
-                    width: 40,
-                    height: 40,
-                    color: Colors.transparent,
-                    child: const Icon(Icons.public, size: 24),
+              // Logo Planet Traduction
+              Image.asset(
+                'assets/logo.png',
+                height: 48,
+                fit: BoxFit.contain,
+                errorBuilder: (c, e, s) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF000091), width: 2),
+                    borderRadius: BorderRadius.circular(0),
+                  ),
+                  child: const Text(
+                    'RF',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF000091),
+                      letterSpacing: 2,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Gesplanet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text('Bienvenue ${AuthManager.userFullName}', style: const TextStyle(fontSize: 12)),
-                ],
+              const SizedBox(width: 16),
+              // Nom de l'application
+              const Text(
+                'Smart Planet Traduction',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF161616),
+                ),
+              ),
+              const Spacer(),
+              // Utilisateur
+              Text(
+                'Bienvenue ${AuthManager.userFullName}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFF3A3A3A),
+                ),
+              ),
+              const SizedBox(width: 24),
+              // Bouton déconnexion DSFR
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEEEEE),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.logout, size: 20),
+                  color: const Color(0xFF000091),
+                  iconSize: 20,
+                  padding: const EdgeInsets.all(12),
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  tooltip: 'Déconnexion',
+                  onPressed: () {
+                    AuthManager.logout();
+                    Navigator.pushReplacementNamed(context, "/login");
+                  },
+                ),
               ),
             ],
           ),
-          bottom: TabBar(
-            tabs: tabs,
-            labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(49.0),
+            child: Column(
+              children: [
+                Container(
+                  color: Colors.white,
+                  child: TabBar(
+                    tabs: tabs,
+                    labelColor: const Color(0xFF000091),
+                    unselectedLabelColor: const Color(0xFF666666),
+                    labelStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    indicator: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Color(0xFF000091),
+                          width: 4,
+                        ),
+                      ),
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                  ),
+                ),
+                Container(
+                  height: 1,
+                  color: const Color(0xFFDDDDDD),
+                ),
+              ],
+            ),
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: () {
-                AuthManager.logout();
-                Navigator.pushReplacementNamed(context, "/login");
-              },
-            )
-          ],
         ),
         body: TabBarView(children: views),
       ),
@@ -95,24 +165,40 @@ class HomePage extends StatelessWidget {
   // 📱 LAYOUT MOBILE : DASHBOARD EN CARTES
   // ------------------------------------------------------------
   Widget _buildMobileLayout(UserRights rights, BuildContext context) {
-    final logoSize = ResponsiveHelper.isMobile(context) ? 36.0 : 40.0;
-    
-    return Scaffold(
+        return Scaffold(
+      backgroundColor: const Color(0xFFF6F6F6),
       appBar: AppBar(
-        toolbarHeight: ResponsiveHelper.isMobile(context) ? 60 : 68,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF161616),
+        elevation: 0,
+        toolbarHeight: ResponsiveHelper.isMobile(context) ? 64 : 72,
         title: Row(
           children: [
-            ClipOval(
-              child: Image.asset(
-                'assets/logo.png',
-                width: logoSize,
-                height: logoSize,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => Container(
-                  width: logoSize,
-                  height: logoSize,
-                  color: Colors.transparent,
-                  child: Icon(Icons.public, size: logoSize * 0.6),
+            // Logo Planet Traduction
+            Image.asset(
+              'assets/logo.png',
+              height: ResponsiveHelper.isMobile(context) ? 40 : 48,
+              fit: BoxFit.contain,
+              errorBuilder: (c, e, s) => Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: ResponsiveHelper.isMobile(context) ? 8 : 12,
+                  vertical: ResponsiveHelper.isMobile(context) ? 4 : 6,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: const Color(0xFF000091),
+                    width: ResponsiveHelper.isMobile(context) ? 1.5 : 2,
+                  ),
+                  borderRadius: BorderRadius.circular(0),
+                ),
+                child: Text(
+                  'RF',
+                  style: TextStyle(
+                    fontSize: ResponsiveHelper.isMobile(context) ? 12 : 16,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF000091),
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -123,16 +209,19 @@ class HomePage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Gesplanet',
+                    'Smart Planet Traduction',
                     style: TextStyle(
-                      fontSize: ResponsiveHelper.getFontSize(context, base: 16),
-                      fontWeight: FontWeight.bold,
+                      fontSize: ResponsiveHelper.getFontSize(context, base: 14),
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF161616),
                     ),
                   ),
                   Text(
                     'Bienvenue ${AuthManager.userFullName}',
                     style: TextStyle(
                       fontSize: ResponsiveHelper.getFontSize(context, base: 11),
+                      fontWeight: FontWeight.w400,
+                      color: const Color(0xFF666666),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -142,15 +231,36 @@ class HomePage extends StatelessWidget {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              AuthManager.logout();
-              Navigator.pushReplacementNamed(context, "/login");
-            },
-            tooltip: 'Déconnexion',
-          )
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEEEEE),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.logout, size: 20),
+              color: const Color(0xFF000091),
+              iconSize: 20,
+              padding: const EdgeInsets.all(12),
+              constraints: const BoxConstraints(
+                minWidth: 44,
+                minHeight: 44,
+              ),
+              onPressed: () {
+                AuthManager.logout();
+                Navigator.pushReplacementNamed(context, "/login");
+              },
+              tooltip: 'Déconnexion',
+            ),
+          ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(
+            color: const Color(0xFFDDDDDD),
+            height: 1.0,
+          ),
+        ),
       ),
       body: ResponsiveContainer(
         child: GridView.count(
@@ -165,7 +275,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.people,
                 label: "Interprètes",
-                color: Colors.blue,
+                color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/interpreters"),
               ),
             if (rights.canManageMissions() || rights.isAdmin())
@@ -173,7 +283,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.work,
                 label: "Missions",
-                color: Colors.green,
+                color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/missions"),
               ),
             if (rights.isAdmin())
@@ -181,7 +291,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.admin_panel_settings,
                 label: "Admin",
-                color: Colors.purple,
+                color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/admin"),
               ),
           ],
@@ -203,12 +313,16 @@ class HomePage extends StatelessWidget {
     final iconSize = ResponsiveHelper.isMobile(context) ? 36.0 : 44.0;
     
     return Card(
-      elevation: ResponsiveHelper.getCardElevation(context),
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: ResponsiveHelper.getBorderRadius(context),
+        borderRadius: BorderRadius.circular(4),
+        side: const BorderSide(
+          color: Color(0xFFDDDDDD),
+          width: 1,
+        ),
       ),
       child: InkWell(
-        borderRadius: ResponsiveHelper.getBorderRadius(context),
+        borderRadius: BorderRadius.circular(4),
         onTap: onTap,
         child: Container(
           padding: EdgeInsets.all(ResponsiveHelper.getSpacing(context)),

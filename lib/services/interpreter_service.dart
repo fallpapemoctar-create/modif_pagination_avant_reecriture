@@ -3,19 +3,41 @@ import 'package:http/http.dart' as http;
 import '../models/interpreter.dart';
 
 class InterpreterService {
-  static const String baseUrl = "http://ami.yourbizapps.com/api/";
+  //static const String baseUrl = "http://ami.yourbizapps.com/api/";
+    static const String baseUrl = "http://localhost/gesplanet_01/ami/api/";
+
 
   // -----------------------------
   // GET : Liste des interprètes
   // -----------------------------
   static Future<List<Interpreter>> getInterpreters() async {
-    final response = await http.get(Uri.parse("${baseUrl}get_interpretes.php"));
+    try {
+      final response = await http.get(Uri.parse("${baseUrl}get_interpretes.php"));
 
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.map((e) => Interpreter.fromJson(e)).toList();
-    } else {
-      throw Exception("Erreur lors du chargement des interprètes");
+      print('Interpreters response status: ${response.statusCode}');
+      print('Interpreters response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final dynamic decoded = jsonDecode(response.body);
+        
+        List<dynamic> data;
+        if (decoded is List) {
+          data = decoded;
+        } else if (decoded is Map && decoded.containsKey('data')) {
+          data = decoded['data'] as List<dynamic>;
+        } else if (decoded is Map && decoded.containsKey('interpretes')) {
+          data = decoded['interpretes'] as List<dynamic>;
+        } else {
+          throw Exception("Format de réponse inattendu");
+        }
+        
+        return data.map((e) => Interpreter.fromJson(e)).toList();
+      } else {
+        throw Exception("Erreur lors du chargement des interprètes: ${response.statusCode}");
+      }
+    } catch (e) {
+      print('Error loading interpreters: $e');
+      throw Exception("Erreur lors du chargement des interprètes: $e");
     }
   }
   // -----------------------------

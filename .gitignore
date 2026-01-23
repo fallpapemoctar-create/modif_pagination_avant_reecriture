@@ -1,3 +1,51 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+pubspec.lock
+build/
+flutter_export_environment.sh
+
+# Generated plugin registrant
+lib/generated_plugin_registrant.dart
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/build/
+android/.idea/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework/
+ios/**/DerivedData/
+
+# macOS
+.DS_Store
+
+# Windows
+windows/**/build/
+
+# Linux
+linux/**/build/
+
+# Web
+build/web/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+
+# Local SDKs and caches
+dart-sdk/
+
+# Native assets/build outputs
+native_assets/
+native_hooks/
 # Miscellaneous
 *.class
 *.log

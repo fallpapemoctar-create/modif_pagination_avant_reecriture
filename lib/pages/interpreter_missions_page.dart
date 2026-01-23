@@ -123,8 +123,8 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
                     const SizedBox(width: 12),
                     TextButton.icon(
                       onPressed: () => setState(() { _filterYear = null; _filterMonth = null; }),
-                      icon: const Icon(Icons.clear),
-                      label: const Text('Réinitialiser'),
+                      icon: const Icon(Icons.clear, color: Color(0xFF000091)),
+                      label: const Text('Réinitialiser', style: TextStyle(color: Color(0xFF000091))),
                     ),
                   ],
                 ),

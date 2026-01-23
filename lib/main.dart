@@ -19,6 +19,28 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      title: 'Smart Planet Traduction',
+      theme: ThemeData(
+        primaryColor: const Color(0xFF000091), // Bleu France
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF000091),
+          primary: const Color(0xFF000091),
+          secondary: const Color(0xFFE1000F), // Rouge Marianne
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF000091),
+          elevation: 1,
+          iconTheme: IconThemeData(color: Color(0xFF000091)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF000091),
+            foregroundColor: Colors.white,
+          ),
+        ),
+        fontFamily: 'Marianne', // Utilise Marianne si disponible
+      ),
       home: const LoginPage(),
       routes: {
         '/login': (context) => const LoginPage(),

@@ -3,7 +3,8 @@ import 'package:http/http.dart' as http;
 import '../models/mission.dart';
 
 class MissionService {
-  static const String baseUrl = "http://ami.yourbizapps.com/api/";
+  //static const String baseUrl = "http://ami.yourbizapps.com/api/";
+  static const String baseUrl = "http://localhost/gesplanet_01/ami/api/";
 
   // ------------------------------------------------------------
   // GET : Liste des interprètes des missions
@@ -85,16 +86,33 @@ class MissionService {
   // GET : Liste des interprètes ayant au moins une mission (for master list)
   // ------------------------------------------------------------
   static Future<List<Map<String, dynamic>>> getInterpretersWithMissions() async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/get_missions_by_interpreter.php"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({}),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/get_missions_by_interpreter.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({}),
+      );
 
-    if (response.statusCode != 200) throw Exception("Erreur");
+      print('Interpreters with missions response status: ${response.statusCode}');
+      print('Interpreters with missions response body: ${response.body}');
 
-    final data = jsonDecode(response.body);
-    return (data as List).map((e) => e as Map<String, dynamic>).toList();
+      if (response.statusCode != 200) throw Exception("Erreur: ${response.statusCode}");
+
+      final dynamic data = jsonDecode(response.body);
+      
+      if (data is List) {
+        return data.map((e) => e as Map<String, dynamic>).toList();
+      } else if (data is Map && data.containsKey('data')) {
+        return (data['data'] as List).map((e) => e as Map<String, dynamic>).toList();
+      } else if (data is Map && data.containsKey('success') && data['success'] == false) {
+        throw Exception(data['message'] ?? 'Erreur API');
+      } else {
+        throw Exception("Format de réponse inattendu");
+      }
+    } catch (e) {
+      print('Error loading interpreters with missions: $e');
+      rethrow;
+    }
   }
   // ------------------------------------------------------------
   // POST : Ajouter un interprète de mission
