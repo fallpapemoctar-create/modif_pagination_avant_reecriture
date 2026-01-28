@@ -4,6 +4,7 @@ import '../models/user.dart';
 import '../services/admin_service.dart';
 import '../core/user_rights.dart';
 import '../core/responsive_helper.dart';
+import '../core/brand_footer.dart';
 
 class AdminPage extends StatefulWidget {
 	final UserRights? userRights;
@@ -110,6 +111,7 @@ class _AdminPageState extends State<AdminPage> {
 				canManageInterpreters: user.canManageInterpreters,
 				canManageMissions: user.canManageMissions,
 				isAdmin: user.isAdmin,
+				isInterpreter: user.isInterpreter,
 				rightsDisplay: user.rightsDisplay,
 			);
 
@@ -129,11 +131,13 @@ class _AdminPageState extends State<AdminPage> {
 	}
 
 	Future<void> _toggleRight(UserModel user, String rightKey) async {
-		bool newInterp = user.canManageInterpreters;
+		bool newIsInterpreter = user.isInterpreter;
+		bool newCanManageInterpreters = user.canManageInterpreters;
 		bool newMissions = user.canManageMissions;
 		bool newAdmin = user.isAdmin;
 
-		if (rightKey == 'interpreters') newInterp = !newInterp;
+		if (rightKey == 'interpreters') newIsInterpreter = !newIsInterpreter;
+		if (rightKey == 'interpreters_manager') newCanManageInterpreters = !newCanManageInterpreters;
 		if (rightKey == 'missions') newMissions = !newMissions;
 		if (rightKey == 'admin') newAdmin = !newAdmin;
 
@@ -142,11 +146,20 @@ class _AdminPageState extends State<AdminPage> {
 			username: user.username,
 			fullname: user.fullname,
 			email: user.email,
-			canManageInterpreters: newInterp,
+			canManageInterpreters: newCanManageInterpreters,
 			canManageMissions: newMissions,
 			isAdmin: newAdmin,
+			isInterpreter: newIsInterpreter,
 			rightsDisplay: user.rightsDisplay,
 		);
+
+		// Optimistic UI update: reflect toggle instantly
+		setState(() {
+			final idxAll = _all.indexWhere((u) => u.id == user.id);
+			if (idxAll != -1) _all[idxAll] = updated;
+			final idxFiltered = _filtered.indexWhere((u) => u.id == user.id);
+			if (idxFiltered != -1) _filtered[idxFiltered] = updated;
+		});
 
 		final messenger = ScaffoldMessenger.of(context);
 		try {
@@ -158,10 +171,13 @@ class _AdminPageState extends State<AdminPage> {
 			} else {
 				if (!mounted) return;
 				messenger.showSnackBar(const SnackBar(content: Text('Erreur lors de la mise à jour')));
+				// Revert by reloading
+				await _load();
 			}
 		} catch (e) {
 			if (!mounted) return;
 			messenger.showSnackBar(SnackBar(content: Text('Erreur: $e')));
+			await _load();
 		}
 	}
 
@@ -206,7 +222,9 @@ class _AdminPageState extends State<AdminPage> {
 											? _buildMobileList()
 											: _buildDesktopTable(theme),
 						),
-					],
+							// Footer credit
+							const BrandFooter(),
+						],
 				),
 			),
 			),
@@ -273,7 +291,8 @@ class _AdminPageState extends State<AdminPage> {
 								Divider(height: 24),
 								
 								// Rights switches
-								_buildMobileRight('Gestionnaire Interprètes', u.canManageInterpreters, () => _toggleRight(u, 'interpreters')),
+								  _buildMobileRight('Interprète', u.isInterpreter, () => _toggleRight(u, 'interpreters')),
+								  _buildMobileRight('Gestionnaire Interprètes', u.canManageInterpreters, () => _toggleRight(u, 'interpreters_manager')),
 								SizedBox(height: 8),
 								_buildMobileRight('Gestionnaire Missions', u.canManageMissions, () => _toggleRight(u, 'missions')),
 								SizedBox(height: 8),
@@ -331,18 +350,31 @@ class _AdminPageState extends State<AdminPage> {
 								),
 							),
 							const SizedBox(width: 16),
-							SizedBox(
-								width: interpWidth,
-								child: Text(
-									'Interprètes',
-									textAlign: TextAlign.center,
-									style: TextStyle(
-										fontWeight: FontWeight.w700,
-										color: Colors.white,
-										fontSize: ResponsiveHelper.getFontSize(context, base: 13),
-									),
-								),
-							),
+														SizedBox(
+															width: interpWidth,
+															child: Text(
+																'Interprètes',
+																textAlign: TextAlign.center,
+																style: TextStyle(
+																	fontWeight: FontWeight.w700,
+																	color: Colors.white,
+																	fontSize: ResponsiveHelper.getFontSize(context, base: 13),
+																),
+															),
+														),
+														const SizedBox(width: 16),
+														SizedBox(
+															width: otherRightWidth,
+															child: Text(
+																'Gest. Interprètes',
+																textAlign: TextAlign.center,
+																style: TextStyle(
+																	fontWeight: FontWeight.w700,
+																	color: Colors.white,
+																	fontSize: ResponsiveHelper.getFontSize(context, base: 13),
+																),
+															),
+														),
 							const SizedBox(width: 16),
 							SizedBox(
 								width: otherRightWidth,
@@ -452,24 +484,35 @@ class _AdminPageState extends State<AdminPage> {
 													margin: const EdgeInsets.symmetric(horizontal: 12),
 													color: const Color(0xFFDDDDDD),
 												),
-												SizedBox(
-													width: interpWidth,
-													child: Center(
-														child: Switch(
-															value: u.canManageInterpreters,
-															onChanged: (v) => _toggleRight(u, 'interpreters'),
-															activeColor: const Color(0xFF000091), // Blue France
-															activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
-														),
-													),
-												),
+																								SizedBox(
+																									width: interpWidth,
+																									child: Center(
+																										child: Switch(
+																											value: u.isInterpreter,
+																											onChanged: (v) => _toggleRight(u, 'interpreters'),
+																											activeThumbColor: const Color(0xFF000091), // Blue France
+																											activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
+																										),
+																									),
+																								),
+																								SizedBox(
+																									width: otherRightWidth,
+																									child: Center(
+																										child: Switch(
+																											value: u.canManageInterpreters,
+																											onChanged: (v) => _toggleRight(u, 'interpreters_manager'),
+																											activeThumbColor: const Color(0xFF000091),
+																											activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
+																										),
+																									),
+																								),
 												SizedBox(
 													width: otherRightWidth,
 													child: Center(
 														child: Switch(
 															value: u.canManageMissions,
 															onChanged: (v) => _toggleRight(u, 'missions'),
-															activeColor: const Color(0xFF000091),
+															activeThumbColor: const Color(0xFF000091),
 															activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
 														),
 													),
@@ -480,7 +523,7 @@ class _AdminPageState extends State<AdminPage> {
 														child: Switch(
 															value: u.isAdmin,
 															onChanged: (v) => _toggleRight(u, 'admin'),
-															activeColor: const Color(0xFF000091),
+															activeThumbColor: const Color(0xFF000091),
 															activeTrackColor: const Color(0xFF000091).withOpacity(0.5),
 														),
 													),
@@ -531,11 +574,11 @@ class _AdminPageState extends State<AdminPage> {
 					),
 					ElevatedButton(
 						onPressed: () => Navigator.pop(ctx, true),
-						child: const Text('Supprimer'),
 						style: ElevatedButton.styleFrom(
 							backgroundColor: Colors.red,
 							foregroundColor: Colors.white,
 						),
+						child: const Text('Supprimer'),
 					),
 				],
 			),

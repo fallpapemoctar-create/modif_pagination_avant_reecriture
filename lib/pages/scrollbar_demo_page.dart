@@ -9,7 +9,7 @@ import '../core/responsive_helper.dart';
 /// - Tester le comportement responsive
 /// - Comparer les couleurs
 class ScrollbarDemoPage extends StatefulWidget {
-  const ScrollbarDemoPage({Key? key}) : super(key: key);
+  const ScrollbarDemoPage({super.key});
 
   @override
   State<ScrollbarDemoPage> createState() => _ScrollbarDemoPageState();

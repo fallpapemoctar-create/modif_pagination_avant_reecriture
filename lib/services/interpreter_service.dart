@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/interpreter.dart';
+import '../core/app_config.dart';
 
 class InterpreterService {
-  //static const String baseUrl = "http://ami.yourbizapps.com/api/";
-    static const String baseUrl = "http://localhost/gesplanet_01/ami/api/";
+  static String get baseUrl => AppConfig.instance.apiBaseUrl;
 
 
   // -----------------------------

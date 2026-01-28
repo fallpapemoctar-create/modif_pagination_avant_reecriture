@@ -5,6 +5,8 @@ import '../core/responsive_helper.dart';
 import '../pages/interpreters_page.dart';
 import '../pages/missions_page.dart';
 import '../screens/admin_page.dart';
+import '../core/brand_footer.dart';
+import '../screens/export_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -39,6 +41,8 @@ class HomePage extends StatelessWidget {
     if (rights.isAdmin()) {
       tabs.add(const Tab(icon: Icon(Icons.admin_panel_settings), text: "Admin"));
       views.add(AdminPage(userRights: rights));
+      tabs.add(const Tab(icon: Icon(Icons.download), text: "Export"));
+      views.add(const ExportPage());
     }
 
     return DefaultTabController(
@@ -157,6 +161,10 @@ class HomePage extends StatelessWidget {
           ),
         ),
         body: TabBarView(children: views),
+        bottomNavigationBar: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: BrandFooter(),
+        ),
       ),
     );
   }
@@ -165,7 +173,7 @@ class HomePage extends StatelessWidget {
   // 📱 LAYOUT MOBILE : DASHBOARD EN CARTES
   // ------------------------------------------------------------
   Widget _buildMobileLayout(UserRights rights, BuildContext context) {
-        return Scaffold(
+      return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -294,8 +302,20 @@ class HomePage extends StatelessWidget {
                 color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/admin"),
               ),
+            if (rights.isAdmin())
+              _dashboardCard(
+                context: context,
+                icon: Icons.download,
+                label: "Export",
+                color: const Color(0xFF000091),
+                onTap: () => Navigator.pushNamed(context, "/export"),
+              ),
           ],
         ),
+      ),
+      bottomNavigationBar: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: BrandFooter(),
       ),
     );
   }

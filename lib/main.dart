@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'core/app_config.dart';
 
 import 'screens/login_page.dart';
 import 'screens/admin_mockup_preview.dart';
 import 'screens/admin_page.dart';
+import 'screens/export_page.dart';
 import 'pages/interpreters_page.dart';
 import 'pages/missions_page.dart';
 import 'core/auth_manager.dart';
 
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppConfig.load();
   runApp(const MyApp());
 }
 
@@ -19,7 +23,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Smart Planet Traduction',
+      title: 'AMI — Assistance Missions Interprètes',
       theme: ThemeData(
         primaryColor: const Color(0xFF000091), // Bleu France
         colorScheme: ColorScheme.fromSeed(
@@ -48,6 +52,7 @@ class MyApp extends StatelessWidget {
         '/interpreters': (context) => InterpretersPage(userRights: AuthManager.userRights),
         '/missions': (context) => MissionsPage(userRights: AuthManager.userRights),
         '/admin': (context) => AdminPage(userRights: AuthManager.userRights),
+        '/export': (context) => const ExportPage(),
       },
     );
   }

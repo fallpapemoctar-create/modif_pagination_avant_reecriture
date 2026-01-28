@@ -1,11 +1,11 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import '../core/app_config.dart';
 
 
   class AuthService {
- // static const String baseUrl = "http://ami.yourbizapps.com/api/";
-    static const String baseUrl = "http://localhost/gesplanet_01/ami/api/";
+    static String get baseUrl => AppConfig.instance.apiBaseUrl;
 
 
   static Future<Map<String, dynamic>> login(String login, String password) async {

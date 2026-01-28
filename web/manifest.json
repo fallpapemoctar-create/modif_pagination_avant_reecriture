@@ -1,11 +1,12 @@
 {
-    "name": "ami",
-    "short_name": "ami",
-    "start_url": ".",
+    "name": "AMI — Assistance Missions Interprètes",
+    "short_name": "AMI",
+    "start_url": "/gesplanet_01/ami/",
+    "scope": "/gesplanet_01/ami/",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Assistance Missions Interprètes — by Smart Technologie pour Planet Traduction.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

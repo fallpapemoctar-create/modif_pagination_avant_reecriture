@@ -26,6 +26,7 @@ $password = $data['password'] ?? null; // optional
 $canManageInterpreters = !empty($data['can_manage_interpreters']);
 $canManageMissions = !empty($data['can_manage_missions']);
 $isAdmin = !empty($data['is_admin']);
+$isInterpreter = !empty($data['is_interpreter']);
 
 if ($id <= 0) {
     http_response_code(400);
@@ -68,6 +69,7 @@ try {
     $rightsToAssign = [];
     if ($canManageInterpreters) $rightsToAssign[] = 'agent_admin_annuaire';
     if ($canManageMissions) $rightsToAssign[] = 'agent_admin_mission';
+    if ($isInterpreter) $rightsToAssign[] = 'interprete';
     if ($isAdmin) $rightsToAssign[] = 'admin';
 
     foreach ($rightsToAssign as $rname) {

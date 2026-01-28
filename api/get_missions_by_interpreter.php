@@ -75,6 +75,10 @@ try {
     echo json_encode($result, JSON_UNESCAPED_UNICODE);
 
 } catch (Exception $e) {
-    echo json_encode(["error" => "Erreur serveur: " . $e->getMessage()]);
+    http_response_code(500);
+    echo json_encode([
+        "error" => "Erreur serveur",
+        "details" => $e->getMessage()
+    ]);
 }
 ?>

@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/mission.dart';
+import '../core/app_config.dart';
 
 class MissionService {
-  //static const String baseUrl = "http://ami.yourbizapps.com/api/";
-  static const String baseUrl = "http://localhost/gesplanet_01/ami/api/";
+  static String get baseUrl => AppConfig.instance.apiBaseUrl;
 
   // ------------------------------------------------------------
   // GET : Liste des interprètes des missions
@@ -112,6 +112,54 @@ class MissionService {
     } catch (e) {
       print('Error loading interpreters with missions: $e');
       rethrow;
+    }
+  }
+
+  static Future<Map<String, dynamic>> getMissionsDatatable({int page = 1, int pageSize = 50, String? q}) async {
+    try {
+      final uri = Uri.parse("${baseUrl}get_missions_datatable.php").replace(queryParameters: {
+        'page': page.toString(),
+        'pageSize': pageSize.toString(),
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+      });
+      final response = await http.get(uri);
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map && decoded['success'] == true) {
+        final data = (decoded['missions'] as List<dynamic>? ) ?? [];
+        return {
+          'missions': data.map((e) => (e as Map<String, dynamic>)).toList(),
+          'total': decoded['total'] ?? data.length,
+          'page': decoded['page'] ?? page,
+          'pageSize': decoded['pageSize'] ?? pageSize,
+        };
+      } else if (decoded is List) {
+        final list = decoded.cast<Map<String, dynamic>>();
+        return {'missions': list, 'total': list.length, 'page': page, 'pageSize': pageSize};
+      } else {
+        return {'missions': <Map<String, dynamic>>[], 'total': 0, 'page': page, 'pageSize': pageSize};
+      }
+    } catch (e) {
+      print('Error loading missions datatable: $e');
+      return {'missions': <Map<String, dynamic>>[], 'total': 0, 'page': page, 'pageSize': pageSize};
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getMissionsDatatableAll({String? q}) async {
+    try {
+      final uri = Uri.parse("${baseUrl}get_missions_datatable.php").replace(queryParameters: {
+        'exportAll': '1',
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+      });
+      final response = await http.get(uri);
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map && decoded['success'] == true) {
+        final data = (decoded['missions'] as List<dynamic>? ) ?? [];
+        return data.map((e) => (e as Map<String, dynamic>)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error loading missions datatable all: $e');
+      return [];
     }
   }
   // ------------------------------------------------------------

@@ -6,7 +6,6 @@ build/
 flutter_export_environment.sh
 
 # Generated plugin registrant
-lib/generated_plugin_registrant.dart
 
 # Android
 android/.gradle/

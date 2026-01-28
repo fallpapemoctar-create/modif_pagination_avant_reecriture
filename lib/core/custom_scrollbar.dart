@@ -12,7 +12,7 @@ class CustomScrollbar extends StatelessWidget {
   final bool isAlwaysShown;
 
   const CustomScrollbar({
-    Key? key,
+    super.key,
     required this.child,
     required this.controller,
     this.thumbColor,
@@ -20,7 +20,7 @@ class CustomScrollbar extends StatelessWidget {
     this.thickness,
     this.radius,
     this.isAlwaysShown = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -52,11 +52,11 @@ class DsfrScrollbar extends StatelessWidget {
   final bool isAlwaysShown;
 
   const DsfrScrollbar({
-    Key? key,
+    super.key,
     required this.child,
     required this.controller,
     this.isAlwaysShown = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -77,11 +77,11 @@ class DsfrScrollbarRed extends StatelessWidget {
   final bool isAlwaysShown;
 
   const DsfrScrollbarRed({
-    Key? key,
+    super.key,
     required this.child,
     required this.controller,
     this.isAlwaysShown = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -102,11 +102,11 @@ class DsfrScrollbarGray extends StatelessWidget {
   final bool isAlwaysShown;
 
   const DsfrScrollbarGray({
-    Key? key,
+    super.key,
     required this.child,
     required this.controller,
     this.isAlwaysShown = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
