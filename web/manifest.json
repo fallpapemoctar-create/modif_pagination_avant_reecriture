@@ -1,8 +1,8 @@
 {
     "name": "AMI - Assistance missions interprètes",
     "short_name": "AMI",
-    "start_url": "/gesplanet_01/ami/",
-    "scope": "/gesplanet_01/ami/",
+    "start_url": "/ami/",
+    "scope": "/ami/",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
