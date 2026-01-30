@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../core/auth_manager.dart';
 import '../core/user_rights.dart';
 import 'home_page.dart';
+import '../core/brand_footer.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -266,6 +267,8 @@ class _LoginPageState extends State<LoginPage> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          const BrandFooter(),
         ],
       ),
     );

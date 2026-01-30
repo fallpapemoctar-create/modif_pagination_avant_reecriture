@@ -5,6 +5,7 @@ import '../services/mission_service.dart';
 import '../core/user_rights.dart';
 import '../core/responsive_helper.dart';
 import '../core/custom_scrollbar.dart';
+import '../core/brand_footer.dart';
 
 class MissionsPage extends StatefulWidget {
   final UserRights userRights;
@@ -433,6 +434,7 @@ class _MissionsPageState extends State<MissionsPage> {
                     },
                   ),
                 ),
+                const BrandFooter(),
               ],
             ),
           ),

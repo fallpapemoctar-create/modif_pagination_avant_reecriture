@@ -222,7 +222,6 @@ class _AdminPageState extends State<AdminPage> {
 											? _buildMobileList()
 											: _buildDesktopTable(theme),
 						),
-							// Footer credit
 							const BrandFooter(),
 						],
 				),

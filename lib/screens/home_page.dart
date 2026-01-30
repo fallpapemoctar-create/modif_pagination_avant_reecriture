@@ -5,8 +5,8 @@ import '../core/responsive_helper.dart';
 import '../pages/interpreters_page.dart';
 import '../pages/missions_page.dart';
 import '../screens/admin_page.dart';
-import '../core/brand_footer.dart';
 import '../screens/export_page.dart';
+import '../core/brand_footer.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -81,7 +81,7 @@ class HomePage extends StatelessWidget {
               const SizedBox(width: 16),
               // Nom de l'application
               const Text(
-                'Smart Planet Traduction',
+                'AMI - Assistance missions interprètes',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -162,9 +162,9 @@ class HomePage extends StatelessWidget {
         ),
         body: TabBarView(children: views),
         bottomNavigationBar: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: BrandFooter(),
-        ),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: BrandFooter(),
+          ),
       ),
     );
   }
@@ -217,7 +217,7 @@ class HomePage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Smart Planet Traduction',
+                    'AMI - Assistance missions interprètes',
                     style: TextStyle(
                       fontSize: ResponsiveHelper.getFontSize(context, base: 14),
                       fontWeight: FontWeight.w700,

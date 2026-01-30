@@ -23,7 +23,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'AMI — Assistance Missions Interprètes',
+      title: 'AMI - Assistance missions interprètes',
       theme: ThemeData(
         primaryColor: const Color(0xFF000091), // Bleu France
         colorScheme: ColorScheme.fromSeed(

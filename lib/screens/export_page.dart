@@ -7,7 +7,6 @@ import '../core/brand_footer.dart';
 import '../services/interpreter_service.dart';
 import '../services/admin_service.dart';
 import '../services/mission_service.dart';
-import '../models/interpreter.dart';
 import '../models/user.dart';
 
 // Web-only download helpers
@@ -167,7 +166,7 @@ class _ExportPageState extends State<ExportPage> {
     final bytes = utf8.encode(content);
     final blob = html.Blob([bytes], mime);
     final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
+    html.AnchorElement(href: url)
       ..setAttribute('download', filename)
       ..click();
     html.Url.revokeObjectUrl(url);
@@ -277,6 +276,7 @@ class _ExportPageState extends State<ExportPage> {
               style: TextStyle(color: Colors.black54),
             ),
             const SizedBox(height: 16),
+              const BrandFooter(),
             if (_missions.isNotEmpty)
               Expanded(
                 child: SingleChildScrollView(
@@ -310,7 +310,6 @@ class _ExportPageState extends State<ExportPage> {
                 ),
               ),
             const SizedBox(height: 12),
-            const BrandFooter(),
           ],
         ),
       ),

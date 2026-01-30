@@ -7,6 +7,7 @@ import '../services/interpreter_service.dart';
 import '../core/user_rights.dart';
 import '../core/responsive_helper.dart';
 import '../core/custom_scrollbar.dart';
+import '../core/brand_footer.dart';
 
 class InterpretersPage extends StatefulWidget {
   final UserRights userRights;
@@ -598,6 +599,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
               },
             ),
           ),
+          const BrandFooter(),
         ]),
         ),
       ),
