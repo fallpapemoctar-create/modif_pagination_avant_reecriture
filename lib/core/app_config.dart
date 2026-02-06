@@ -1,6 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 
+// Allows selecting an alternative config at build time:
+// flutter build web --dart-define=APP_CONFIG_ASSET=assets/config/app_config.prod.json
+const String _configAsset = String.fromEnvironment(
+  'APP_CONFIG_ASSET',
+  defaultValue: 'assets/config/app_config.json',
+);
+
 class AppConfig {
   final String apiBaseUrl;
 
@@ -16,7 +23,7 @@ class AppConfig {
     return inst;
   }
 
-  static Future<void> load({String assetPath = 'assets/config/app_config.json'}) async {
+  static Future<void> load({String assetPath = _configAsset}) async {
     final raw = await rootBundle.loadString(assetPath);
     final map = jsonDecode(raw) as Map<String, dynamic>;
     final base = map['apiBaseUrl'] as String?;

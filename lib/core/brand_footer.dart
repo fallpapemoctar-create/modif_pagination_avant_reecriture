@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'responsive_helper.dart';
 
 class BrandFooter extends StatelessWidget {
   const BrandFooter({super.key});

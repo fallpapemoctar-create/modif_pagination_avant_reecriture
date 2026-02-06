@@ -14,8 +14,7 @@ class InterpreterService {
     try {
       final response = await http.get(Uri.parse("${baseUrl}get_interpretes.php"));
 
-      print('Interpreters response status: ${response.statusCode}');
-      print('Interpreters response body: ${response.body}');
+      // Debug logs removed for production cleanliness
 
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
@@ -36,7 +35,7 @@ class InterpreterService {
         throw Exception("Erreur lors du chargement des interprètes: ${response.statusCode}");
       }
     } catch (e) {
-      print('Error loading interpreters: $e');
+      // Swallow noisy logs in production
       throw Exception("Erreur lors du chargement des interprètes: $e");
     }
   }

@@ -1,27 +1,23 @@
 # Web Production Release Guide
 
 ## Configure API endpoint
-- Edit `assets/config/app_config.json` and set `apiBaseUrl` to your production API root (must end with a slash). Example:
-```
-{
-  "apiBaseUrl": "https://your-domain/ami/api/"
-}
-```
+- For production, use the provided config at `assets/config/app_config.prod.json` (set to `https://ami.planetapplis.fr/api/`).
+- Alternatively, edit `assets/config/app_config.json` for local/dev.
 
 ## Build (release)
 Run from the project root:
 ```powershell
 cd C:\wamp64\www\gesplanet_01\ami
 flutter pub get
-flutter build web --release --web-renderer canvaskit
+flutter build web --release --dart-define=APP_CONFIG_ASSET=assets/config/app_config.prod.json
 ```
 - If deploying under a subpath (e.g. `/smartbizapp/`), add:
 ```powershell
-flutter build web --release --web-renderer canvaskit --base-href /smartbizapp/
+flutter build web --release --base-href /smartbizapp/ --dart-define=APP_CONFIG_ASSET=assets/config/app_config.prod.json
 ```
 
 ## Deploy
-- Upload the contents of `build/web/` to your web server.
+- Upload the contents of `build/web/` to your web server at the path `/www/ami`.
 - If using Apache/WAMP:
   - Enable compression (gzip/brotli) for `.js`, `.json`, `.css`, `.wasm`.
   - Set caching for static assets (long max-age) and for `index.html` (no-cache).
@@ -36,7 +32,7 @@ flutter build web --release --web-renderer canvaskit --base-href /smartbizapp/
 ```
 
 ## Verify
-- Open the deployed URL in a fresh browser profile.
+- Open the deployed URL in a fresh browser profile: `https://ami.planetapplis.fr/`.
 - Check network calls point to your production API (`apiBaseUrl`).
 - Ensure service worker `flutter_service_worker.js` is served and caching works.
 

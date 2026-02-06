@@ -93,8 +93,7 @@ class MissionService {
         body: jsonEncode({}),
       );
 
-      print('Interpreters with missions response status: ${response.statusCode}');
-      print('Interpreters with missions response body: ${response.body}');
+      // Debug logs removed for production cleanliness
 
       if (response.statusCode != 200) throw Exception("Erreur: ${response.statusCode}");
 
@@ -110,7 +109,7 @@ class MissionService {
         throw Exception("Format de réponse inattendu");
       }
     } catch (e) {
-      print('Error loading interpreters with missions: $e');
+      // Swallow noisy logs in production
       rethrow;
     }
   }
@@ -139,7 +138,7 @@ class MissionService {
         return {'missions': <Map<String, dynamic>>[], 'total': 0, 'page': page, 'pageSize': pageSize};
       }
     } catch (e) {
-      print('Error loading missions datatable: $e');
+      // Suppress console noise in production
       return {'missions': <Map<String, dynamic>>[], 'total': 0, 'page': page, 'pageSize': pageSize};
     }
   }
@@ -158,7 +157,7 @@ class MissionService {
       }
       return [];
     } catch (e) {
-      print('Error loading missions datatable all: $e');
+      // Suppress console noise in production
       return [];
     }
   }

@@ -1,13 +1,13 @@
-# Flutter Web SPA rewrite rules for Apache
+DirectoryIndex index.html
 RewriteEngine On
-
-# Base path for the app
-RewriteBase /ami/
 
 # Serve existing files directly
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
 
+# Always pass through API requests to PHP without SPA rewrite
+RewriteRule ^api/ - [L]
+
 # Fallback all other routes to index.html
-RewriteRule ^ index.html [L]
+RewriteRule . /index.html [L]

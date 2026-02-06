@@ -17,28 +17,44 @@ $interpreter_id = $input['interpreter_id'] ?? null;
 try {
     if ($interpreter_id) {
         // Return missions for the specified interpreter (existing behavior)
-        $sql = "SELECT
-            m.rowid,
-            m.ref as reference_devis,
-            m.nominterprete,
-            m.debutmission,
-            m.finmission,
-            m.montant_mission,
-            m.status_payment,
-            m.date_payment,
-            u.firstname,
-            u.lastname,
-            p.ref as produit_ref,
-            p.rowid as id_produit_service,
-            s.prix_achat_ht,
-            s.prix_vente_ht
-        FROM llx_missionsplanet_mission m
-        INNER JOIN llx_user u ON m.nominterprete = u.rowid
-        LEFT JOIN llx_product p ON m.langue = p.rowid
-        LEFT JOIN tble_ref_services s ON p.rowid = s.id_libelle_service
-        WHERE m.nominterprete = :interpreter_id
-        AND m.status <> 9
-        ORDER BY m.debutmission DESC";
+                $sql = "SELECT
+                        m.rowid,
+                        m.ref as reference_devis,
+                        m.nominterprete,
+                        m.debutmission,
+                        m.finmission,
+                        m.montant_mission,
+                        -- status_payment is derived from billed.status when present
+                        CASE
+                            WHEN b.status IS NULL THEN m.status_payment
+                            WHEN LOWER(b.status) IN ('paid','payé','payee','paye','1','yes','true') THEN 1
+                            ELSE 0
+                        END AS status_payment,
+                        m.date_payment,
+                        b.status AS billed_status,
+                        u.firstname,
+                        u.lastname,
+                        p.ref as produit_ref,
+                        p.rowid as id_produit_service,
+                        s.prix_achat_ht,
+                        s.prix_vente_ht
+                FROM llx_missionsplanet_mission m
+                INNER JOIN llx_user u ON m.nominterprete = u.rowid
+                LEFT JOIN llx_product p ON m.langue = p.rowid
+                LEFT JOIN tble_ref_services s ON p.rowid = s.id_libelle_service
+                -- Join latest billed status per mission by matching on ref
+                LEFT JOIN (
+                    SELECT bb.ref, bb.status
+                    FROM tble_mission_billed bb
+                    INNER JOIN (
+                        SELECT ref, MAX(billed_at) AS max_billed_at
+                        FROM tble_mission_billed
+                        GROUP BY ref
+                    ) last ON last.ref = bb.ref AND last.max_billed_at = bb.billed_at
+                ) b ON b.ref = m.ref
+                WHERE m.nominterprete = :interpreter_id
+                AND m.status <> 9
+                ORDER BY m.debutmission DESC";
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute(['interpreter_id' => $interpreter_id]);

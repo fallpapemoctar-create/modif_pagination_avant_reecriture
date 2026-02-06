@@ -19,8 +19,7 @@ import '../core/app_config.dart';
         }),
       );
 
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      // Debug logs removed for production cleanliness
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -31,7 +30,6 @@ import '../core/app_config.dart';
         };
       }
     } catch (e) {
-      print('Login error: $e');
       return {
         "success": false,
         "message": "Erreur de connexion: $e"

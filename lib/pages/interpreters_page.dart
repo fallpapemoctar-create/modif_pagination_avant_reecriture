@@ -51,22 +51,41 @@ class _InterpretersPageState extends State<InterpretersPage> {
 
   void _load() {
     _future = InterpreterService.getInterpreters();
-    _future.then((list) {
-      setState(() {
-        _all = list;
-        _applyFilters();
-      });
-    }).catchError((e) {
-      // ignore for now
-    });
+    _future
+        .then((list) {
+          setState(() {
+            _all = list;
+            _applyFilters();
+          });
+        })
+        .catchError((e) {
+          // ignore for now
+        });
   }
 
   void _applyFilters() {
     final q = _search.toLowerCase();
     _filtered = _all.where((i) {
       if (q.isEmpty) return true;
-      return i.displayName.toLowerCase().contains(q) || i.languesParlees.toLowerCase().contains(q) || i.ville.toLowerCase().contains(q);
+      return i.displayName.toLowerCase().contains(q) ||
+          i.languesParlees.toLowerCase().contains(q) ||
+          i.ville.toLowerCase().contains(q);
     }).toList();
+  }
+
+  Future<void> _openFmi() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.parse('https://fmi.planetapplis.fr/');
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Impossible d\'ouvrir FMI')),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Erreur: $e')));
+    }
   }
 
   void _onSearchChanged(String v) {
@@ -85,7 +104,11 @@ class _InterpretersPageState extends State<InterpretersPage> {
     }
     final uri = Uri(scheme: 'tel', path: cleaned);
     try {
-      if (!await launchUrl(uri)) messenger.showSnackBar(const SnackBar(content: Text('Impossible d\'appeler')));
+      if (!await launchUrl(uri)) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Impossible d\'appeler')),
+        );
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Erreur: $e')));
     }
@@ -95,13 +118,19 @@ class _InterpretersPageState extends State<InterpretersPage> {
     final messenger = ScaffoldMessenger.of(context);
     final cleaned = phone.replaceAll(RegExp(r'[^0-9+]'), '');
     if (cleaned.isEmpty) {
-      messenger.showSnackBar(const SnackBar(content: Text('Numéro WhatsApp invalide')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Numéro WhatsApp invalide')),
+      );
       return;
     }
     final wa = cleaned.startsWith('+') ? cleaned.substring(1) : cleaned;
     final uri = Uri.parse('https://wa.me/$wa');
     try {
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) messenger.showSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir WhatsApp')));
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Impossible d\'ouvrir WhatsApp')),
+        );
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Erreur: $e')));
     }
@@ -117,51 +146,54 @@ class _InterpretersPageState extends State<InterpretersPage> {
             maxHeight: MediaQuery.of(context).size.height * 0.7,
           ),
           child: AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text(
-          'Supprimer',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF161616),
-          ),
-        ),
-        content: Text(
-          'Supprimer ${i.displayName} ?',
-          style: const TextStyle(
-            fontSize: 16,
-            color: Color(0xFF3A3A3A),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF000091),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-            child: const Text(
-              'Annuler',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE1000F),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
+            backgroundColor: Colors.white,
+            title: const Text(
+              'Supprimer',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF161616),
               ),
             ),
-            child: const Text(
-              'Supprimer',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            content: Text(
+              'Supprimer ${i.displayName} ?',
+              style: const TextStyle(fontSize: 16, color: Color(0xFF3A3A3A)),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF000091),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text(
+                  'Annuler',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE1000F),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                child: const Text(
+                  'Supprimer',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
         ),
       ),
     );
@@ -173,11 +205,15 @@ class _InterpretersPageState extends State<InterpretersPage> {
         if (success) {
           _load();
         } else {
-          messenger.showSnackBar(const SnackBar(content: Text('Erreur lors de la suppression')));
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Erreur lors de la suppression')),
+          );
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erreur: $e')));
       }
     }
   }
@@ -187,8 +223,12 @@ class _InterpretersPageState extends State<InterpretersPage> {
     final numeroCtrl = TextEditingController(text: interpreter?.numero ?? '');
     final nomCtrl = TextEditingController(text: interpreter?.nom ?? '');
     final prenomCtrl = TextEditingController(text: interpreter?.prenom ?? '');
-    final mobileCtrl = TextEditingController(text: interpreter?.telMobile ?? '');
-    final commentairesCtrl = TextEditingController(text: interpreter?.commentaires ?? '');
+    final mobileCtrl = TextEditingController(
+      text: interpreter?.telMobile ?? '',
+    );
+    final commentairesCtrl = TextEditingController(
+      text: interpreter?.commentaires ?? '',
+    );
     String statusValue = interpreter?.status ?? 'Disponible';
     final formKey = GlobalKey<FormState>();
 
@@ -200,52 +240,90 @@ class _InterpretersPageState extends State<InterpretersPage> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.85,
           ),
-          child: StatefulBuilder(builder: (c, setStateDialog) => AlertDialog(
-            backgroundColor: Colors.white,
-            title: Text(
-              isEdit ? 'Modifier un interprète' : 'Ajouter un interprète',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF161616),
+          child: StatefulBuilder(
+            builder: (c, setStateDialog) => AlertDialog(
+              backgroundColor: Colors.white,
+              title: Text(
+                isEdit ? 'Modifier un interprète' : 'Ajouter un interprète',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF161616),
+                ),
               ),
-            ),
-            content: SingleChildScrollView(
-              child: Form(
-                key: formKey,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  TextFormField(controller: numeroCtrl, decoration: const InputDecoration(labelText: 'Numéro')),
-                  TextFormField(controller: nomCtrl, decoration: const InputDecoration(labelText: 'Nom'), validator: (v) => (v == null || v.isEmpty) ? 'Nom obligatoire' : null),
-                  TextFormField(controller: prenomCtrl, decoration: const InputDecoration(labelText: 'Prénom')),
-                  TextFormField(controller: mobileCtrl, decoration: const InputDecoration(labelText: 'Téléphone mobile')),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: statusValue,
-                    decoration: const InputDecoration(labelText: 'Statut'),
-                    items: ['Disponible', 'Indisponible', 'En mission'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                    onChanged: (v) => setStateDialog(() => statusValue = v ?? statusValue),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: numeroCtrl,
+                        decoration: const InputDecoration(labelText: 'Numéro'),
+                      ),
+                      TextFormField(
+                        controller: nomCtrl,
+                        decoration: const InputDecoration(labelText: 'Nom'),
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'Nom obligatoire' : null,
+                      ),
+                      TextFormField(
+                        controller: prenomCtrl,
+                        decoration: const InputDecoration(labelText: 'Prénom'),
+                      ),
+                      TextFormField(
+                        controller: mobileCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Téléphone mobile',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: statusValue,
+                        decoration: const InputDecoration(labelText: 'Statut'),
+                        items: ['Disponible', 'Indisponible', 'En mission']
+                            .map(
+                              (s) => DropdownMenuItem(value: s, child: Text(s)),
+                            )
+                            .toList(),
+                        onChanged: (v) => setStateDialog(
+                          () => statusValue = v ?? statusValue,
+                        ),
+                      ),
+                      TextFormField(
+                        controller: commentairesCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Commentaires',
+                        ),
+                        maxLines: 3,
+                      ),
+                    ],
                   ),
-                  TextFormField(controller: commentairesCtrl, decoration: const InputDecoration(labelText: 'Commentaires'), maxLines: 3),
-                ]),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF000091),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                child: const Text(
-                  'Annuler',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                 ),
               ),
-              ElevatedButton(
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF000091),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                  child: const Text(
+                    'Annuler',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF000091),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
                     ),
@@ -269,23 +347,31 @@ class _InterpretersPageState extends State<InterpretersPage> {
                       pays: interpreter?.pays ?? '',
                       commentaires: commentairesCtrl.text.trim(),
                       status: statusValue,
-                      displayName: ('${nomCtrl.text} ${prenomCtrl.text}').trim().toUpperCase(),
+                      displayName: ('${nomCtrl.text} ${prenomCtrl.text}')
+                          .trim()
+                          .toUpperCase(),
                     );
                     try {
-                      final success = isEdit ? await InterpreterService.updateInterpreter(i) : await InterpreterService.addInterpreter(i);
+                      final success = isEdit
+                          ? await InterpreterService.updateInterpreter(i)
+                          : await InterpreterService.addInterpreter(i);
                       if (!mounted) return;
                       if (success) navigator.pop(true);
                     } catch (e) {
                       if (!mounted) return;
-                      messenger.showSnackBar(SnackBar(content: Text('Erreur: $e')));
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Erreur: $e')),
+                      );
                     }
                   },
                   child: const Text(
                     'Enregistrer',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                  ))
-            ],
-          )),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -331,13 +417,15 @@ class _InterpretersPageState extends State<InterpretersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canManage = widget.userRights.canManageInterpreters() || widget.userRights.isAdmin();
+    final canManage =
+        widget.userRights.canManageInterpreters() ||
+        widget.userRights.isAdmin();
     return KeyboardListener(
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: (KeyEvent event) {
         final screenHeight = MediaQuery.of(context).size.height;
-        
+
         if (event is KeyDownEvent) {
           if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
             _scrollController.animateTo(
@@ -351,19 +439,27 @@ class _InterpretersPageState extends State<InterpretersPage> {
               duration: const Duration(milliseconds: 150),
               curve: Curves.easeOut,
             );
-          } else if (event.logicalKey == LogicalKeyboardKey.pageDown || event.logicalKey == LogicalKeyboardKey.space) {
+          } else if (event.logicalKey == LogicalKeyboardKey.pageDown ||
+              event.logicalKey == LogicalKeyboardKey.space) {
             // Annuler le timer précédent si existant
             _scrollTimer?.cancel();
             // Premier scroll immédiat
             _scrollController.jumpTo(
-              (_scrollController.offset + screenHeight * 0.8).clamp(0, _scrollController.position.maxScrollExtent),
+              (_scrollController.offset + screenHeight * 0.8).clamp(
+                0,
+                _scrollController.position.maxScrollExtent,
+              ),
             );
             // Continuer à scroller tant que la touche est maintenue
-            _scrollTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+            _scrollTimer = Timer.periodic(const Duration(milliseconds: 100), (
+              timer,
+            ) {
               if (_scrollController.hasClients) {
                 final newOffset = _scrollController.offset + screenHeight * 0.2;
                 if (newOffset >= _scrollController.position.maxScrollExtent) {
-                  _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+                  _scrollController.jumpTo(
+                    _scrollController.position.maxScrollExtent,
+                  );
                   timer.cancel();
                 } else {
                   _scrollController.jumpTo(newOffset);
@@ -375,10 +471,15 @@ class _InterpretersPageState extends State<InterpretersPage> {
             _scrollTimer?.cancel();
             // Premier scroll immédiat
             _scrollController.jumpTo(
-              (_scrollController.offset - screenHeight * 0.8).clamp(0, _scrollController.position.maxScrollExtent),
+              (_scrollController.offset - screenHeight * 0.8).clamp(
+                0,
+                _scrollController.position.maxScrollExtent,
+              ),
             );
             // Continuer à scroller tant que la touche est maintenue
-            _scrollTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+            _scrollTimer = Timer.periodic(const Duration(milliseconds: 100), (
+              timer,
+            ) {
               if (_scrollController.hasClients) {
                 final newOffset = _scrollController.offset - screenHeight * 0.2;
                 if (newOffset <= 0) {
@@ -404,7 +505,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
           }
         } else if (event is KeyUpEvent) {
           // Arrêter le scroll continu quand la touche est relâchée
-          if (event.logicalKey == LogicalKeyboardKey.pageDown || 
+          if (event.logicalKey == LogicalKeyboardKey.pageDown ||
               event.logicalKey == LogicalKeyboardKey.pageUp ||
               event.logicalKey == LogicalKeyboardKey.space) {
             _scrollTimer?.cancel();
@@ -424,116 +525,164 @@ class _InterpretersPageState extends State<InterpretersPage> {
             horizontal: _getHorizontalPadding(context),
             vertical: ResponsiveHelper.getSpacing(context),
           ),
-          child: Column(children: [
-            // Search bar with add button
-            Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: ResponsiveHelper.getSpacing(context),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: _searchFocusNode.hasFocus 
-                              ? const Color(0xFF000091) 
-                              : const Color(0xFFDDDDDD),
-                          width: _searchFocusNode.hasFocus ? 2 : 1,
+          child: Column(
+            children: [
+              // Search bar with add button
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: ResponsiveHelper.getSpacing(context),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _searchFocusNode.hasFocus
+                                ? const Color(0xFF000091)
+                                : const Color(0xFFDDDDDD),
+                            width: _searchFocusNode.hasFocus ? 2 : 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Icon(Icons.search, color: Color(0xFF666666), size: 20),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              focusNode: _searchFocusNode,
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
+                        child: Row(
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Icon(
+                                Icons.search,
+                                color: Color(0xFF666666),
+                                size: 20,
                               ),
-                              cursorColor: const Color(0xFF000091),
-                              decoration: const InputDecoration(
-                                hintText: 'Rechercher un interprète',
-                                hintStyle: TextStyle(
-                                  color: Color(0xFF666666),
+                            ),
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                focusNode: _searchFocusNode,
+                                style: const TextStyle(
+                                  color: Colors.black,
                                   fontSize: 16,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(vertical: 14),
-                              ),
-                              onChanged: _onSearchChanged,
-                            ),
-                          ),
-                          if (_searchController.text.isNotEmpty)
-                            GestureDetector(
-                              onTap: () {
-                                _searchController.clear();
-                                _onSearchChanged('');
-                                setState(() {});
-                              },
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 12),
-                                child: Icon(Icons.close, color: Color(0xFF666666), size: 20),
+                                cursorColor: const Color(0xFF000091),
+                                decoration: const InputDecoration(
+                                  hintText: 'Rechercher un interprète',
+                                  hintStyle: TextStyle(
+                                    color: Color(0xFF666666),
+                                    fontSize: 16,
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                ),
+                                onChanged: _onSearchChanged,
                               ),
                             ),
-                          const SizedBox(width: 8),
-                        ],
+                            if (_searchController.text.isNotEmpty)
+                              GestureDetector(
+                                onTap: () {
+                                  _searchController.clear();
+                                  _onSearchChanged('');
+                                  setState(() {});
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 12),
+                                  child: Icon(
+                                    Icons.close,
+                                    color: Color(0xFF666666),
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(width: 8),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => _showInterpreterForm(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF000091),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      minimumSize: const Size(120, 48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _showInterpreterForm(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF000091),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        minimumSize: const Size(120, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      icon: const Icon(Icons.add, size: 24),
+                      label: const Text(
+                        'Ajouter',
+                        style: TextStyle(fontSize: 16),
                       ),
                     ),
-                    icon: const Icon(Icons.add, size: 24),
-                    label: const Text('Ajouter', style: TextStyle(fontSize: 16)),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _openFmi,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF000091),
+                        side: const BorderSide(
+                          color: Color(0xFF000091),
+                          width: 1,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        minimumSize: const Size(120, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      icon: const Icon(Icons.receipt_long, size: 22),
+                      label: const Text(
+                        'FMI – Factures',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          SizedBox(height: ResponsiveHelper.getSpacing(context)),
-          Expanded(
-            child: FutureBuilder<List<Interpreter>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting && _all.isEmpty) {
-                  return const Center(child: CircularProgressIndicator(color: Color(0xFF000091)));
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Erreur: ${snapshot.error}'));
-                }
-                if (_filtered.isEmpty) {
-                  return const Center(child: Text('Aucun interprète trouvé'));
-                }
+              SizedBox(height: ResponsiveHelper.getSpacing(context)),
+              Expanded(
+                child: FutureBuilder<List<Interpreter>>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        _all.isEmpty) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF000091),
+                        ),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Erreur: ${snapshot.error}'));
+                    }
+                    if (_filtered.isEmpty) {
+                      return const Center(
+                        child: Text('Aucun interprète trouvé'),
+                      );
+                    }
 
-                // Responsive grid configuration based on screen width
-                final screenWidth = MediaQuery.of(context).size.width;
+                    // Responsive grid configuration based on screen width
+                    final screenWidth = MediaQuery.of(context).size.width;
                     final int crossAxisCount;
                     final double childAspectRatio;
-                    
+
                     if (screenWidth < 600) {
                       // Mobile: 1 column
                       crossAxisCount = 1;
@@ -560,64 +709,84 @@ class _InterpretersPageState extends State<InterpretersPage> {
                       childAspectRatio = 1.3;
                     }
 
-                // Use GridView for wider screens
-                if (screenWidth >= 600) {
-                  return DsfrScrollbar(
-                    controller: _scrollController,
-                    child: GridView.builder(
-                      controller: _scrollController,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: ResponsiveHelper.getSpacing(context),
-                        mainAxisSpacing: ResponsiveHelper.getSpacing(context),
-                        childAspectRatio: childAspectRatio,
-                      ),
-                      itemCount: _filtered.length,
-                      itemBuilder: (context, index) {
-                        final i = _filtered[index];
-                        return _buildInterpreterCard(i, canManage, isGrid: true);
-                      },
-                    ),
-                  );
-                }
+                    // Use GridView for wider screens
+                    if (screenWidth >= 600) {
+                      return DsfrScrollbar(
+                        controller: _scrollController,
+                        child: GridView.builder(
+                          controller: _scrollController,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                crossAxisSpacing: ResponsiveHelper.getSpacing(
+                                  context,
+                                ),
+                                mainAxisSpacing: ResponsiveHelper.getSpacing(
+                                  context,
+                                ),
+                                childAspectRatio: childAspectRatio,
+                              ),
+                          itemCount: _filtered.length,
+                          itemBuilder: (context, index) {
+                            final i = _filtered[index];
+                            return _buildInterpreterCard(
+                              i,
+                              canManage,
+                              isGrid: true,
+                            );
+                          },
+                        ),
+                      );
+                    }
 
-                // Mobile: ListView with scrollbar
-                return DsfrScrollbar(
-                  controller: _scrollController,
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    itemCount: _filtered.length,
-                    padding: EdgeInsets.symmetric(
-                      vertical: ResponsiveHelper.getSpacing(context, mobile: 4),
-                    ),
-                    itemBuilder: (context, index) {
-                      final i = _filtered[index];
-                      return _buildInterpreterCard(i, canManage, isGrid: false);
-                    },
-                  ),
-                );
-              },
-            ),
+                    // Mobile: ListView with scrollbar
+                    return DsfrScrollbar(
+                      controller: _scrollController,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        itemCount: _filtered.length,
+                        padding: EdgeInsets.symmetric(
+                          vertical: ResponsiveHelper.getSpacing(
+                            context,
+                            mobile: 4,
+                          ),
+                        ),
+                        itemBuilder: (context, index) {
+                          final i = _filtered[index];
+                          return _buildInterpreterCard(
+                            i,
+                            canManage,
+                            isGrid: false,
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const BrandFooter(),
+            ],
           ),
-          const BrandFooter(),
-        ]),
         ),
       ),
     );
   }
 
-  Widget _buildInterpreterCard(Interpreter i, bool canManage, {required bool isGrid}) {
+  Widget _buildInterpreterCard(
+    Interpreter i,
+    bool canManage, {
+    required bool isGrid,
+  }) {
     final spacing = ResponsiveHelper.isMobile(context) ? 12.0 : 16.0;
-    
+
     return Card(
       elevation: 0,
-      margin: isGrid ? EdgeInsets.zero : EdgeInsets.symmetric(vertical: spacing / 2),
+      margin: isGrid
+          ? EdgeInsets.zero
+          : EdgeInsets.symmetric(vertical: spacing / 2),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(4),
-        side: const BorderSide(
-          color: Color(0xFFDDDDDD),
-          width: 1,
-        ),
+        side: const BorderSide(color: Color(0xFFDDDDDD), width: 1),
       ),
       color: Colors.white,
       child: Padding(
@@ -639,7 +808,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
               ),
             ),
             SizedBox(height: spacing),
-            
+
             // Languages in red/brown color
             Flexible(
               child: Center(
@@ -657,7 +826,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
               ),
             ),
             SizedBox(height: spacing),
-            
+
             // Phone number in blue
             Center(
               child: TextButton(
@@ -682,13 +851,17 @@ class _InterpretersPageState extends State<InterpretersPage> {
               ),
             ),
             SizedBox(height: spacing / 2),
-            
+
             // Email with icon
             Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.email_outlined, size: 16, color: Color(0xFF666666)),
+                  const Icon(
+                    Icons.email_outlined,
+                    size: 16,
+                    color: Color(0xFF666666),
+                  ),
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
@@ -705,11 +878,14 @@ class _InterpretersPageState extends State<InterpretersPage> {
               ),
             ),
             SizedBox(height: spacing),
-            
+
             // Availability status badge
             Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: i.status.toLowerCase().contains('dis')
                       ? const Color(0xFFB8FEC9)
@@ -735,13 +911,17 @@ class _InterpretersPageState extends State<InterpretersPage> {
               ),
             ),
             SizedBox(height: spacing),
-            
+
             // Notes/Comments with checkbox icon
             if (i.commentaires.isNotEmpty)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.check_box_outline_blank, size: 18, color: Color(0xFF666666)),
+                  const Icon(
+                    Icons.check_box_outline_blank,
+                    size: 18,
+                    color: Color(0xFF666666),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -757,7 +937,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
                 ],
               ),
             if (i.commentaires.isNotEmpty) SizedBox(height: spacing),
-            
+
             // Action buttons row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -792,7 +972,11 @@ class _InterpretersPageState extends State<InterpretersPage> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.white, size: 20),
+                      icon: const Icon(
+                        Icons.edit,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                       onPressed: () => _showInterpreterForm(interpreter: i),
                       tooltip: 'Modifier',
                     ),
@@ -804,7 +988,11 @@ class _InterpretersPageState extends State<InterpretersPage> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.white, size: 20),
+                      icon: const Icon(
+                        Icons.delete,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                       onPressed: () => _confirmDelete(i),
                       tooltip: 'Supprimer',
                     ),
@@ -818,4 +1006,3 @@ class _InterpretersPageState extends State<InterpretersPage> {
     );
   }
 }
-

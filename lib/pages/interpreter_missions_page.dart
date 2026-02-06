@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import '../services/mission_service.dart';
 
 class InterpreterMissionsPage extends StatefulWidget {
@@ -13,12 +14,12 @@ class InterpreterMissionsPage extends StatefulWidget {
   });
 
   @override
-  State<InterpreterMissionsPage> createState() => _InterpreterMissionsPageState();
+  State<InterpreterMissionsPage> createState() =>
+      _InterpreterMissionsPageState();
 }
 
 class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
   late Future<List<Map<String, dynamic>>> _futureMissions;
-  final NumberFormat _currency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
 
   String _formatDate(dynamic value) {
@@ -28,6 +29,7 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
     if (parsed != null) return _dateFormat.format(parsed);
     return value.toString();
   }
+
   DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
     if (value is DateTime) return value;
@@ -44,15 +46,15 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
   }
 
   void _loadMissions() {
-    _futureMissions = MissionService.getMissionsByInterpreter(widget.interpreterId);
+    _futureMissions = MissionService.getMissionsByInterpreter(
+      widget.interpreterId,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Missions de ${widget.interpreterName}'),
-      ),
+      appBar: AppBar(title: Text('Missions de ${widget.interpreterName}')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -63,9 +65,7 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
             }
 
             if (snapshot.hasError) {
-              return Center(
-                child: Text('Erreur: ${snapshot.error}'),
-              );
+              return Center(child: Text('Erreur: ${snapshot.error}'));
             }
 
             final missions = snapshot.data ?? [];
@@ -90,7 +90,9 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
               final dt = _parseDate(m['debutmission']);
               if (dt == null) return true;
               if (_filterYear != null && dt.year != _filterYear) return false;
-              if (_filterMonth != null && dt.month != _filterMonth) return false;
+              if (_filterMonth != null && dt.month != _filterMonth) {
+                return false;
+              }
               return true;
             }).toList();
 
@@ -99,14 +101,20 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
               children: [
                 Row(
                   children: [
-                    const Text('Filtrer : '),
-                    const SizedBox(width: 8),
                     DropdownButton<int?>(
                       value: _filterYear,
                       hint: const Text('Année'),
                       items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('Toutes')),
-                        ...yearList.map((y) => DropdownMenuItem<int?>(value: y, child: Text('$y'))),
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('Toutes'),
+                        ),
+                        ...yearList.map(
+                          (y) => DropdownMenuItem<int?>(
+                            value: y,
+                            child: Text('$y'),
+                          ),
+                        ),
                       ],
                       onChanged: (v) => setState(() => _filterYear = v),
                     ),
@@ -115,16 +123,32 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
                       value: _filterMonth,
                       hint: const Text('Mois'),
                       items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('Tous')),
-                        ...months.map((m) => DropdownMenuItem<int?>(value: m, child: Text(DateFormat.MMMM('fr_FR').format(DateTime(0, m))))),
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('Tous'),
+                        ),
+                        ...months.map(
+                          (m) => DropdownMenuItem<int?>(
+                            value: m,
+                            child: Text(
+                              DateFormat.MMMM('fr_FR').format(DateTime(0, m)),
+                            ),
+                          ),
+                        ),
                       ],
                       onChanged: (v) => setState(() => _filterMonth = v),
                     ),
                     const SizedBox(width: 12),
                     TextButton.icon(
-                      onPressed: () => setState(() { _filterYear = null; _filterMonth = null; }),
+                      onPressed: () => setState(() {
+                        _filterYear = null;
+                        _filterMonth = null;
+                      }),
                       icon: const Icon(Icons.clear, color: Color(0xFF000091)),
-                      label: const Text('Réinitialiser', style: TextStyle(color: Color(0xFF000091))),
+                      label: const Text(
+                        'Réinitialiser',
+                        style: TextStyle(color: Color(0xFF000091)),
+                      ),
                     ),
                   ],
                 ),
@@ -133,7 +157,9 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final isWide = constraints.maxWidth > 800;
-                      return isWide ? _buildTableView(filtered) : _buildListView(filtered);
+                      return isWide
+                          ? _buildTableView(filtered)
+                          : _buildListView(filtered);
                     },
                   ),
                 ),
@@ -155,16 +181,38 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
     }).toList();
 
     return ListView.builder(
-      itemCount: missions.length,
+      itemCount: filtered.length,
       itemBuilder: (context, index) {
         final mission = filtered[index];
-        final montant = mission['montant_mission'];
-        final montantText = montant != null ? _currency.format(num.tryParse(montant.toString()) ?? 0) : 'N/A';
-        final paid = mission['status_payment'] == 1;
+
+        final ref = (mission['reference_devis'] ?? '')?.toString() ?? '';
+        final canCopyRef =
+            ref.trim().isNotEmpty && ref != 'Sans référence' && ref != 'N/A';
 
         return Card(
           child: ListTile(
-            title: Text(mission['reference_devis'] ?? 'Sans référence'),
+            title: Row(
+              children: [
+                Expanded(child: Text(ref.isNotEmpty ? ref : 'Sans référence')),
+                if (canCopyRef)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.copy,
+                      size: 18,
+                      color: Color(0xFF000091),
+                    ),
+                    tooltip: 'Copier la référence',
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: ref));
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Référence copiée')),
+                        );
+                      }
+                    },
+                  ),
+              ],
+            ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -173,13 +221,15 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
                 Text('Fin: ${_formatDate(mission['finmission'])}'),
                 Row(
                   children: [
-                    Text('Montant: $montantText'),
-                    const SizedBox(width: 12),
-                    Chip(
-                      label: Text(paid ? 'Payé' : 'Non payé'),
-                      backgroundColor: paid ? Colors.green.shade100 : Colors.red.shade100,
-                      labelStyle: TextStyle(color: paid ? Colors.green.shade800 : Colors.red.shade800),
-                    ),
+                    Builder(builder: (context) {
+                      final billed = mission['billed_status']?.toString();
+                      final hasBilled = billed != null && billed.trim().isNotEmpty;
+                      return Chip(
+                        label: Text(hasBilled ? billed : 'Statut non renseigné'),
+                        backgroundColor: Colors.blueGrey.shade100,
+                        labelStyle: TextStyle(color: Colors.blueGrey.shade800),
+                      );
+                    }),
                   ],
                 ),
               ],
@@ -192,7 +242,7 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
   }
 
   Widget _buildTableView(List<Map<String, dynamic>> missions) {
-                return SingleChildScrollView(
+    return SingleChildScrollView(
       scrollDirection: Axis.vertical,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -202,32 +252,58 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
             DataColumn(label: Text('Produit')),
             DataColumn(label: Text('Début')),
             DataColumn(label: Text('Fin')),
-            DataColumn(label: Text('Montant')),
             DataColumn(label: Text('Paiement')),
           ],
           rows: missions.map((mission) {
-            final montant = mission['montant_mission'];
-            final montantText = montant != null ? _currency.format(num.tryParse(montant.toString()) ?? 0) : 'N/A';
-            final paid = mission['status_payment'] == 1;
+
+            final ref = (mission['reference_devis'] ?? '')?.toString() ?? '';
+            final canCopyRef =
+                ref.trim().isNotEmpty &&
+                ref != 'Sans référence' &&
+                ref != 'N/A';
 
             return DataRow(
               cells: [
-                DataCell(Text(mission['reference_devis'] ?? 'N/A')),
-                DataCell(Text(mission['ref'] ?? 'N/A')),
-                DataCell(Text(_formatDate(mission['debutmission']))),
-                DataCell(Text(_formatDate(mission['finmission']))),
-                DataCell(Text(montantText)),
                 DataCell(
                   Row(
                     children: [
-                      Chip(
-                        label: Text(paid ? 'Payé' : 'Non payé'),
-                        backgroundColor: paid ? Colors.green.shade100 : Colors.red.shade100,
-                        labelStyle: TextStyle(color: paid ? Colors.green.shade800 : Colors.red.shade800),
-                      ),
+                      Expanded(child: Text(ref.isNotEmpty ? ref : 'N/A')),
+                      if (canCopyRef)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.copy,
+                            size: 18,
+                            color: Color(0xFF000091),
+                          ),
+                          tooltip: 'Copier',
+                          onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: ref));
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Référence copiée'),
+                                ),
+                              );
+                            }
+                          },
+                        ),
                     ],
                   ),
                 ),
+                DataCell(Text(mission['ref'] ?? 'N/A')),
+                DataCell(Text(_formatDate(mission['debutmission']))),
+                DataCell(Text(_formatDate(mission['finmission']))),
+                DataCell(Row(children: [
+                  Builder(builder: (context) {
+                    final billed = mission['billed_status']?.toString();
+                    final hasBilled = billed != null && billed.trim().isNotEmpty;
+                    return Chip(
+                      label: Text(hasBilled ? billed : 'Statut non renseigné'),
+                      backgroundColor: Colors.blueGrey.shade100,
+                      labelStyle: TextStyle(color: Colors.blueGrey.shade800),
+                    );
+                  }),
+                ])),
               ],
             );
           }).toList(),
