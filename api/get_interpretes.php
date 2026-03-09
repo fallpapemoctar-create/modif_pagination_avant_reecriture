@@ -1,28 +1,48 @@
 <?php
 require_once "config.php";
+require_once __DIR__ . "/interprete_helpers.php";
 
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 
 try {
-    // Requête SQL
     $sql = "
         SELECT 
-            id_tble_annuaire_interpretes,
-            Numero,
-            Nom,
-            Prenom,
-            Email,
-            Tel_Mobile,
-            Tel_domicile,
-            Langues_parlees,
-            Adresse,
-            Code_postal,
-            Ville,
-            Pays,
-            Commentaires
-        FROM tble_annuaire_interpretes
-        ORDER BY Nom ASC, Prenom ASC
+            u.rowid,
+            u.lastname,
+            u.firstname,
+            u.email,
+            u.user_mobile,
+            u.office_phone,
+            u.office_fax,
+            u.address,
+            u.zip,
+            u.town,
+            u.fk_country,
+            u.interp_langues,
+            u.interp_commentaires,
+            u.selectdispo,
+            c.label AS country_label,
+            c.code AS country_code,
+            c.code_iso AS country_iso
+        FROM llx_user u
+        LEFT JOIN llx_c_country c ON c.rowid = u.fk_country
+        WHERE u.entity = 1
+          AND (
+                EXISTS (
+                    SELECT 1
+                    FROM tble_user_rights ur
+                    INNER JOIN tble_rights r ON r.id = ur.right_id
+                    WHERE ur.user_id = u.rowid
+                      AND r.name = 'interprete'
+                )
+                OR (
+                    COALESCE(u.interp_langues, u.interp_commentaires, u.selectdispo) IS NOT NULL
+                    AND COALESCE(u.interp_langues, u.interp_commentaires, u.selectdispo) <> ''
+                )
+                OR u.fk_country IS NOT NULL
+            )
+        ORDER BY u.lastname ASC, u.firstname ASC
     ";
 
     $stmt = $pdo->prepare($sql);
@@ -30,49 +50,41 @@ try {
 
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Map rows to a UI-friendly structure for card display
     $interpretes = array_map(function($r) {
-        $nom = trim(($r['Nom'] ?? '') . ' ' . ($r['Prenom'] ?? ''));
+        $lastname = $r['lastname'] ?? '';
+        $firstname = $r['firstname'] ?? '';
+        $nom = trim($lastname . ' ' . $firstname);
 
-        // Determine status from DB if available. Support common column names.
-        $status = null;
-        $possibleStatusCols = ['status', 'statut', 'Disponible', 'disponible', 'available', 'etat', 'etat_disponible'];
-        foreach ($possibleStatusCols as $col) {
-            if (array_key_exists($col, $r) && $r[$col] !== null && $r[$col] !== '') {
-                $status = $r[$col];
-                break;
-            }
-        }
+        $status = normalizeStatus($r['selectdispo'] ?? null);
 
-        // Normalize boolean/numeric values
-        if ($status !== null) {
-            if (is_numeric($status)) {
-                $status = intval($status) === 1 ? 'Disponible' : 'Indisponible';
-            } else {
-                // keep DB-provided string (trimmed)
-                $status = trim((string)$status);
-            }
+        $displayName = $nom !== '' ? $nom : ($r['email'] ?? '');
+        if ($displayName !== '' && function_exists('mb_strtoupper')) {
+            $displayName = mb_strtoupper($displayName, 'UTF-8');
         } else {
-            // fallback
-            $status = 'Disponible';
+            $displayName = strtoupper($displayName);
         }
 
         return [
-            'id' => $r['id_tble_annuaire_interpretes'] ?? null,
-            'numero' => $r['Numero'] ?? null,
-            'display_name' => mb_strtoupper($nom, 'UTF-8'),
-            'firstname' => $r['Prenom'] ?? null,
-            'lastname' => $r['Nom'] ?? null,
-            'email' => $r['Email'] ?? null,
-            'tel_mobile' => $r['Tel_Mobile'] ?? null,
-            'tel_domicile' => $r['Tel_domicile'] ?? null,
-            'langues_parlees' => $r['Langues_parlees'] ?? null,
-            'adresse' => $r['Adresse'] ?? null,
-            'code_postal' => $r['Code_postal'] ?? null,
-            'ville' => $r['Ville'] ?? null,
-            'pays' => $r['Pays'] ?? null,
-            'commentaires' => $r['Commentaires'] ?? null,
+            'id' => $r['rowid'] ?? null,
+            'numero' => $r['office_phone'] ?? null,
+            'display_name' => $displayName,
+            'firstname' => $firstname,
+            'lastname' => $lastname,
+            'email' => $r['email'] ?? null,
+            'tel_mobile' => $r['user_mobile'] ?? null,
+            'tel_domicile' => $r['office_fax'] ?? null,
+            'langues_parlees' => $r['interp_langues'] ?? null,
+            'adresse' => $r['address'] ?? null,
+            'code_postal' => $r['zip'] ?? null,
+            'ville' => $r['town'] ?? null,
+            'pays' => $r['country_label'] ?? null,
+            'country_label' => $r['country_label'] ?? null,
+            'fk_country' => $r['fk_country'] ?? null,
+            'country_code' => $r['country_code'] ?? $r['country_iso'] ?? null,
+            'country_iso' => $r['country_iso'] ?? null,
+            'commentaires' => $r['interp_commentaires'] ?? null,
             'status' => $status,
+            'selectdispo' => $r['selectdispo'] ?? null,
         ];
     }, $rows);
 
@@ -81,7 +93,7 @@ try {
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
-        "error" => "Erreur serveur",
-        "details" => $e->getMessage()
+        'error' => 'Erreur serveur',
+        'details' => $e->getMessage()
     ]);
 }

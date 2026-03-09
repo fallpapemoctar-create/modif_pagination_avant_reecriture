@@ -161,6 +161,24 @@ class MissionService {
       return [];
     }
   }
+
+  // ------------------------------------------------------------
+  // GET : Liste des interprètes (annuaire)
+  // ------------------------------------------------------------
+  static Future<List<Map<String, dynamic>>> getInterpretes() async {
+    try {
+      final uri = Uri.parse("${baseUrl}get_interpretes.php");
+      final response = await http.get(uri);
+      if (response.statusCode != 200) return [];
+      final decoded = jsonDecode(response.body);
+      if (decoded is List) {
+        return decoded.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
   // ------------------------------------------------------------
   // POST : Ajouter un interprète de mission
   // ------------------------------------------------------------

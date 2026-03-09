@@ -24,13 +24,19 @@ class _LoginPageState extends State<LoginPage> {
   bool showPassword = false;
 
   @override
+  void initState() {
+    super.initState();
+    rememberMe = AuthManager.rememberMe;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF6F6F6),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const ColoredBox(color: Colors.white),
+          const ColoredBox(color: Color(0xFFF6F6F6)),
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -42,10 +48,10 @@ class _LoginPageState extends State<LoginPage> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFDDDDDD), width: 1),
+                    border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
@@ -200,6 +206,7 @@ class _LoginPageState extends State<LoginPage> {
                                   if (data['success'] == true) {
                                     AuthManager.setUser(data['user']);
                                     AuthManager.setRights(UserRights(List<String>.from(data['rights'])));
+                                    await AuthManager.persistSession(rememberMe: rememberMe);
                                     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -236,34 +243,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
               ),
-                const SizedBox(height: 16),
-                // Bandeau d'information sous le cadre de connexion
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F6FE),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFD6DAFF)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(width: 6, height: 72, decoration: const BoxDecoration(color: Color(0xFF000091), borderRadius: BorderRadius.only(topLeft: Radius.circular(6), bottomLeft: Radius.circular(6)))),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              "Information : Vous devez disposer d'un compte pour accéder à ce service.",
-                              style: TextStyle(fontSize: 14, color: Color(0xFF3A3A3A), height: 1.4),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),

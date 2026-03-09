@@ -4,6 +4,8 @@ import '../core/user_rights.dart';
 import '../core/responsive_helper.dart';
 import '../pages/interpreters_page.dart';
 import '../pages/missions_page.dart';
+import '../pages/missions_table_page.dart';
+import '../pages/billing_page.dart';
 import '../screens/admin_page.dart';
 import '../screens/export_page.dart';
 import '../core/brand_footer.dart';
@@ -36,7 +38,11 @@ class HomePage extends StatelessWidget {
     }
     if (rights.canManageMissions() || rights.isAdmin()) {
       tabs.add(const Tab(icon: Icon(Icons.work), text: "Missions"));
-      views.add( MissionsPage(userRights: rights));
+      views.add(MissionsPage(userRights: rights));
+      tabs.add(const Tab(icon: Icon(Icons.table_rows), text: "Missions (Tableau)"));
+      views.add(MissionsTablePage(userRights: rights));
+      tabs.add(const Tab(icon: Icon(Icons.receipt_long), text: "Facturation"));
+      views.add(BillingPage(userRights: rights));
     }
     if (rights.isAdmin()) {
       tabs.add(const Tab(icon: Icon(Icons.admin_panel_settings), text: "Admin"));
@@ -115,9 +121,11 @@ class HomePage extends StatelessWidget {
                     minHeight: 44,
                   ),
                   tooltip: 'Déconnexion',
-                  onPressed: () {
-                    AuthManager.logout();
-                    Navigator.pushReplacementNamed(context, "/login");
+                  onPressed: () async {
+                    final navigator = Navigator.of(context);
+                    await AuthManager.logout();
+                    if (!navigator.mounted) return;
+                    navigator.pushReplacementNamed("/login");
                   },
                 ),
               ),
@@ -254,9 +262,11 @@ class HomePage extends StatelessWidget {
                 minWidth: 44,
                 minHeight: 44,
               ),
-              onPressed: () {
-                AuthManager.logout();
-                Navigator.pushReplacementNamed(context, "/login");
+                onPressed: () async {
+                  final navigator = Navigator.of(context);
+                  await AuthManager.logout();
+                  if (!navigator.mounted) return;
+                  navigator.pushReplacementNamed("/login");
               },
               tooltip: 'Déconnexion',
             ),
@@ -293,6 +303,22 @@ class HomePage extends StatelessWidget {
                 label: "Missions",
                 color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/missions"),
+              ),
+            if (rights.canManageMissions() || rights.isAdmin())
+              _dashboardCard(
+                context: context,
+                icon: Icons.table_view,
+                label: "Missions (Tableau)",
+                color: const Color(0xFF000091),
+                onTap: () => Navigator.pushNamed(context, "/missions-table"),
+              ),
+            if (rights.canManageMissions() || rights.isAdmin())
+              _dashboardCard(
+                context: context,
+                icon: Icons.receipt_long,
+                label: "Facturation",
+                color: const Color(0xFF000091),
+                onTap: () => Navigator.pushNamed(context, "/billing"),
               ),
             if (rights.isAdmin())
               _dashboardCard(

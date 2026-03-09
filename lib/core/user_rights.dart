@@ -3,6 +3,8 @@ class UserRights {
 
   UserRights(this.rights);
 
+    List<String> get codes => List.unmodifiable(rights);
+
   bool isAdmin() =>
       rights.contains('admin') || rights.contains('agent_admin');
 

@@ -49,7 +49,10 @@ class InterpreterService {
       body: jsonEncode(i.toJson()),
     );
 
-    return response.statusCode == 200;
+    if (response.statusCode == 200) {
+      return true;
+    }
+    throw Exception(_responseError(response.body, 'Impossible d\'ajouter l\'interprète.'));
   }
 
 
@@ -63,7 +66,10 @@ class InterpreterService {
       body: jsonEncode(i.toJson()),
     );
 
-    return response.statusCode == 200;
+    if (response.statusCode == 200) {
+      return true;
+    }
+    throw Exception(_responseError(response.body, 'Impossible de mettre à jour l\'interprète.'));
   }
 
   // -----------------------------
@@ -78,4 +84,16 @@ class InterpreterService {
 
     return response.statusCode == 200;
   }
+}
+
+String _responseError(String body, String fallback) {
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map && decoded['error'] is String) {
+      return decoded['error'] as String;
+    }
+  } catch (_) {
+    return fallback;
+  }
+  return fallback;
 }

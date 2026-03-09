@@ -187,7 +187,16 @@ class _AdminPageState extends State<AdminPage> {
 		final isMobile = ResponsiveHelper.isMobile(context);
 
 		return Scaffold(
-			appBar: AppBar(title: const Text('Administration')),
+			appBar: AppBar(
+				title: const Text('Administration'),
+				actions: [
+					IconButton(
+						icon: const Icon(Icons.apartment),
+						onPressed: () => Navigator.of(context).pushNamed('/company-info'),
+						tooltip: 'Configurer l\'entreprise',
+					),
+				],
+			),
 			body: Container(
 				color: Colors.white,
 				child: ResponsiveContainer(
@@ -423,7 +432,7 @@ class _AdminPageState extends State<AdminPage> {
 					child: Container(
 						decoration: BoxDecoration(
 							color: Colors.white,
-							border: Border.all(color: const Color(0xFFDDDDDD)),
+							border: Border.all(color: const Color(0xFFE5E7EB)),
 							borderRadius: const BorderRadius.vertical(
 								bottom: Radius.circular(4),
 							),
@@ -443,7 +452,7 @@ class _AdminPageState extends State<AdminPage> {
 											color: rowColor,
 											border: const Border(
 												bottom: BorderSide(
-													color: Color(0xFFDDDDDD),
+													color: Color(0xFFE5E7EB),
 													width: 1,
 												),
 											),
@@ -481,7 +490,7 @@ class _AdminPageState extends State<AdminPage> {
 													width: 1,
 													height: 48,
 													margin: const EdgeInsets.symmetric(horizontal: 12),
-													color: const Color(0xFFDDDDDD),
+													color: const Color(0xFFE5E7EB),
 												),
 																								SizedBox(
 																									width: interpWidth,

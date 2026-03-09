@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/interpreter.dart';
+import '../models/country.dart';
 import '../services/interpreter_service.dart';
+import '../services/country_service.dart';
 import '../core/user_rights.dart';
 import '../core/responsive_helper.dart';
 import '../core/custom_scrollbar.dart';
@@ -27,11 +29,13 @@ class _InterpretersPageState extends State<InterpretersPage> {
   final FocusNode _searchFocusNode = FocusNode();
   final TextEditingController _searchController = TextEditingController();
   Timer? _scrollTimer;
+  Future<List<Country>>? _countriesFuture;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _ensureCountriesLoaded();
     _searchFocusNode.addListener(() => setState(() {}));
     // Request focus after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -61,6 +65,11 @@ class _InterpretersPageState extends State<InterpretersPage> {
         .catchError((e) {
           // ignore for now
         });
+  }
+
+  Future<List<Country>> _ensureCountriesLoaded() {
+    _countriesFuture ??= CountryService.getCountries();
+    return _countriesFuture!;
   }
 
   void _applyFilters() {
@@ -197,6 +206,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
         ),
       ),
     );
+    if (!mounted) return;
     if (ok == true) {
       try {
         final success = await InterpreterService.deleteInterpreter(i.id);
@@ -220,11 +230,49 @@ class _InterpretersPageState extends State<InterpretersPage> {
 
   Future<void> _showInterpreterForm({Interpreter? interpreter}) async {
     final isEdit = interpreter != null;
+    List<Country> countries;
+    try {
+      countries = await _ensureCountriesLoaded();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de charger les pays: $e')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    int? countryId = interpreter?.fkCountry;
+    if (countryId == null && (interpreter?.pays.isNotEmpty ?? false)) {
+      final target = interpreter!.pays.toUpperCase();
+      for (final country in countries) {
+        final label = country.label.toUpperCase();
+        if (label == target) {
+          countryId = country.id;
+          break;
+        }
+      }
+    }
+
+    Country? countryFromId(int? id) {
+      if (id == null) return null;
+      for (final c in countries) {
+        if (c.id == id) {
+          return c;
+        }
+      }
+      return null;
+    }
     final numeroCtrl = TextEditingController(text: interpreter?.numero ?? '');
     final nomCtrl = TextEditingController(text: interpreter?.nom ?? '');
     final prenomCtrl = TextEditingController(text: interpreter?.prenom ?? '');
     final mobileCtrl = TextEditingController(
       text: interpreter?.telMobile ?? '',
+    );
+    final emailCtrl = TextEditingController(text: interpreter?.email ?? '');
+    final languesCtrl = TextEditingController(
+      text: interpreter?.languesParlees ?? '',
     );
     final commentairesCtrl = TextEditingController(
       text: interpreter?.commentaires ?? '',
@@ -258,24 +306,65 @@ class _InterpretersPageState extends State<InterpretersPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       TextFormField(
-                        controller: numeroCtrl,
-                        decoration: const InputDecoration(labelText: 'Numéro'),
-                      ),
-                      TextFormField(
                         controller: nomCtrl,
                         decoration: const InputDecoration(labelText: 'Nom'),
-                        validator: (v) =>
-                            (v == null || v.isEmpty) ? 'Nom obligatoire' : null,
+                        onChanged: (_) {
+                          if (!isEdit) formKey.currentState?.validate();
+                        },
                       ),
                       TextFormField(
                         controller: prenomCtrl,
                         decoration: const InputDecoration(labelText: 'Prénom'),
+                        onChanged: (_) {
+                          if (!isEdit) formKey.currentState?.validate();
+                        },
                       ),
+                      if (!isEdit)
+                        FormField<bool>(
+                          validator: (_) {
+                            final hasNom = nomCtrl.text.trim().isNotEmpty;
+                            final hasPrenom = prenomCtrl.text.trim().isNotEmpty;
+                            return hasNom || hasPrenom
+                              ? null
+                              : 'Renseignez au moins le nom ou le prénom';
+                          },
+                          builder: (state) {
+                            if (!state.hasError) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  state.errorText!,
+                                  style: const TextStyle(color: Color(0xFFE1000F)),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       TextFormField(
                         controller: mobileCtrl,
                         decoration: const InputDecoration(
                           labelText: 'Téléphone mobile',
                         ),
+                      ),
+                      TextFormField(
+                        controller: numeroCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Téléphone fixe',
+                        ),
+                      ),
+                      TextFormField(
+                        controller: emailCtrl,
+                        decoration: const InputDecoration(labelText: 'Email'),
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      TextFormField(
+                        controller: languesCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Langues parlées',
+                        ),
+                        maxLines: 2,
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
@@ -289,6 +378,26 @@ class _InterpretersPageState extends State<InterpretersPage> {
                         onChanged: (v) => setStateDialog(
                           () => statusValue = v ?? statusValue,
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int?>(
+                        initialValue: countryId,
+                        decoration: const InputDecoration(labelText: 'Pays'),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Non renseigné'),
+                          ),
+                          ...countries.map(
+                            (country) => DropdownMenuItem<int?>(
+                              value: country.id,
+                              child: Text(country.label),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) => setStateDialog(() {
+                          countryId = value;
+                        }),
                       ),
                       TextFormField(
                         controller: commentairesCtrl,
@@ -332,24 +441,48 @@ class _InterpretersPageState extends State<InterpretersPage> {
                     if (!formKey.currentState!.validate()) return;
                     final messenger = ScaffoldMessenger.of(context);
                     final navigator = Navigator.of(context);
+                    final selectedCountry = countryFromId(countryId);
+                    final fallbackCountryLabel = interpreter?.pays ?? '';
+                    final fallbackCountryId = interpreter?.fkCountry;
+                    final fallbackCountryCode = interpreter?.countryCode;
+                    final fallbackCountryIso = interpreter?.countryIso;
+                    final rawNom = nomCtrl.text.trim();
+                    final rawPrenom = prenomCtrl.text.trim();
+                    final previousNom = (interpreter?.nom ?? '').trim();
+                    final previousPrenom = (interpreter?.prenom ?? '').trim();
+                    final resolvedNom = rawNom.isNotEmpty
+                      ? rawNom
+                      : rawPrenom.isNotEmpty
+                        ? rawPrenom
+                        : previousNom.isNotEmpty
+                          ? previousNom
+                          : 'Interprète';
+                    final resolvedPrenom = rawPrenom.isNotEmpty
+                      ? rawPrenom
+                      : previousPrenom.isNotEmpty
+                        ? previousPrenom
+                        : rawNom;
+                    final display = ('$rawNom $rawPrenom').trim();
                     final i = Interpreter(
                       id: interpreter?.id ?? 0,
                       numero: numeroCtrl.text.trim(),
-                      nom: nomCtrl.text.trim(),
-                      prenom: prenomCtrl.text.trim(),
-                      email: interpreter?.email ?? '',
+                      nom: resolvedNom,
+                      prenom: resolvedPrenom,
+                      email: emailCtrl.text.trim(),
                       telMobile: mobileCtrl.text.trim(),
                       telDomicile: interpreter?.telDomicile ?? '',
-                      languesParlees: interpreter?.languesParlees ?? '',
+                      languesParlees: languesCtrl.text.trim(),
                       adresse: interpreter?.adresse ?? '',
                       codePostal: interpreter?.codePostal ?? '',
                       ville: interpreter?.ville ?? '',
-                      pays: interpreter?.pays ?? '',
+                      pays: selectedCountry?.label ?? fallbackCountryLabel,
+                      fkCountry: selectedCountry?.id ?? fallbackCountryId,
+                      countryCode: selectedCountry?.code ?? fallbackCountryCode,
+                      countryIso: selectedCountry?.codeIso ?? fallbackCountryIso,
                       commentaires: commentairesCtrl.text.trim(),
                       status: statusValue,
-                      displayName: ('${nomCtrl.text} ${prenomCtrl.text}')
-                          .trim()
-                          .toUpperCase(),
+                      displayName: (display.isNotEmpty ? display : resolvedNom)
+                        .toUpperCase(),
                     );
                     try {
                       final success = isEdit
@@ -513,10 +646,10 @@ class _InterpretersPageState extends State<InterpretersPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF6F6F6),
         appBar: AppBar(
           title: const Text('Annuaire des interprètes'),
-          backgroundColor: Colors.white,
+          backgroundColor: const Color(0xFFF8F9FA),
           foregroundColor: const Color(0xFF000091),
           elevation: 1,
         ),
@@ -547,7 +680,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
+                              color: Colors.black.withValues(alpha: 0.03),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -786,7 +919,7 @@ class _InterpretersPageState extends State<InterpretersPage> {
           : EdgeInsets.symmetric(vertical: spacing / 2),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(4),
-        side: const BorderSide(color: Color(0xFFDDDDDD), width: 1),
+        side: const BorderSide(color: Color(0xFFE5E7EB), width: 1),
       ),
       color: Colors.white,
       child: Padding(

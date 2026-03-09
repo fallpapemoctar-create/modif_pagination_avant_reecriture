@@ -34,6 +34,12 @@ try {
     if (isset($data['finmission'])) { $fields[] = 'finmission = :finmission'; $params[':finmission'] = trim($data['finmission']); }
     if (isset($data['status_payment'])) { $fields[] = 'status_payment = :status_payment'; $params[':status_payment'] = (int)$data['status_payment']; }
 
+    // Raw mission fields
+    if (isset($data['datemission'])) { $fields[] = 'datemission = :datemission'; $params[':datemission'] = trim($data['datemission']); }
+    if (isset($data['heuredebutmission'])) { $fields[] = 'heuredebutmission = :heuredebutmission'; $params[':heuredebutmission'] = trim($data['heuredebutmission']); }
+    if (isset($data['dureemission'])) { $fields[] = 'dureemission = :dureemission'; $params[':dureemission'] = (int)$data['dureemission']; }
+    if (isset($data['mission_status'])) { $fields[] = 'status = :status'; $params[':status'] = (int)$data['mission_status']; }
+
     // langue/product
     if (isset($data['id_produit_service'])) { $fields[] = 'langue = :langue'; $params[':langue'] = (int)$data['id_produit_service']; }
     else if (isset($data['produit_ref'])) {

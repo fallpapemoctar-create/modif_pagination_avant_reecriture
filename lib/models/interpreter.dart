@@ -11,6 +11,9 @@ class Interpreter {
   final String codePostal;
   final String ville;
   final String pays;
+  final int? fkCountry;
+  final String? countryCode;
+  final String? countryIso;
   final String commentaires;
   final String status;
   final String displayName;
@@ -28,6 +31,9 @@ class Interpreter {
     required this.codePostal,
     required this.ville,
     required this.pays,
+    this.fkCountry,
+    this.countryCode,
+    this.countryIso,
     required this.commentaires,
     required this.status,
     required this.displayName,
@@ -40,6 +46,13 @@ class Interpreter {
     final nom = (json['Nom'] ?? json['lastname'] ?? '').toString();
     final prenom = (json['Prenom'] ?? json['firstname'] ?? '').toString();
     final display = (json['display_name'] ?? '').toString().trim();
+    final dynamic fkCountrySource = json['fk_country'] ?? json['country_id'];
+    final int? fkCountry = fkCountrySource is int
+      ? fkCountrySource
+      : int.tryParse(fkCountrySource?.toString() ?? '');
+    final pays = (json['Pays'] ?? json['pays'] ?? json['country_label'] ?? json['country'] ?? '')
+      .toString();
+    final countryCode = json['country_code'] ?? json['country_iso'];
 
     return Interpreter(
       id: (json['id_tble_annuaire_interpretes'] ?? json['id']) is int
@@ -55,7 +68,10 @@ class Interpreter {
       adresse: json['Adresse'] ?? json['adresse'] ?? '',
       codePostal: json['Code_postal'] ?? json['code_postal'] ?? '',
       ville: json['Ville'] ?? json['ville'] ?? '',
-      pays: json['Pays'] ?? json['pays'] ?? '',
+      pays: pays,
+      fkCountry: fkCountry,
+      countryCode: countryCode?.toString(),
+      countryIso: json['country_iso']?.toString(),
       commentaires: json['Commentaires'] ?? json['commentaires'] ?? '',
       status: (json['status'] ?? json['statut'] ?? json['Disponible'] ?? json['disponible'] ?? 'Disponible').toString(),
       displayName: display.isNotEmpty ? display : ('$nom $prenom').trim().toUpperCase(),
@@ -64,6 +80,8 @@ class Interpreter {
 
   Map<String, dynamic> toJson() {
     return {
+      "id": id,
+      "rowid": id,
       "id_tble_annuaire_interpretes": id,
       "Numero": numero,
       "Nom": nom,
@@ -76,8 +94,14 @@ class Interpreter {
       "Code_postal": codePostal,
       "Ville": ville,
       "Pays": pays,
+      "pays": pays,
+      "fk_country": fkCountry,
+      "country_id": fkCountry,
+      "country_code": countryCode,
+      "country_iso": countryIso,
       "Commentaires": commentaires,
       "status": status,
+      "selectdispo": status,
       "display_name": displayName,
     };
   }

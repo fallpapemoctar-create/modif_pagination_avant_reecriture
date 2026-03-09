@@ -435,10 +435,10 @@ class _MissionsPageState extends State<MissionsPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF6F6F6),
         appBar: AppBar(
           title: const Text('Missions par interprètes'),
-          backgroundColor: Colors.white,
+          backgroundColor: const Color(0xFFF8F9FA),
           foregroundColor: const Color(0xFF000091),
           elevation: 1,
         ),
@@ -468,7 +468,7 @@ class _MissionsPageState extends State<MissionsPage> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
+                            color: Colors.black.withValues(alpha: 0.03),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
@@ -660,10 +660,10 @@ class _MissionsPageState extends State<MissionsPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: const Color(0xFFDDDDDD), width: 1),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -819,7 +819,7 @@ class _MissionsPageState extends State<MissionsPage> {
       decoration: BoxDecoration(
         color: const Color(0xFFF6F6F6),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: const Color(0xFFDDDDDD), width: 1),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(
@@ -910,7 +910,7 @@ class _MissionsPageState extends State<MissionsPage> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       OutlinedButton.icon(
-                        icon: const Icon(Icons.edit, size: 18),
+                        icon: const Icon(Icons.edit, color: Color(0xFF000091), size: 18),
                         label: const Text(
                           'Modifier',
                           style: TextStyle(
@@ -939,7 +939,7 @@ class _MissionsPageState extends State<MissionsPage> {
                       ),
                       const SizedBox(width: 12),
                       OutlinedButton.icon(
-                        icon: const Icon(Icons.delete, size: 18),
+                        icon: const Icon(Icons.delete, color: Color(0xFFCE0500), size: 18),
                         label: const Text(
                           'Supprimer',
                           style: TextStyle(

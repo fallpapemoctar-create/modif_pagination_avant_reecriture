@@ -1,6 +1,17 @@
 <?php
 require_once __DIR__ . "/config.php";
 
+function columnExists(PDO $pdo, string $table, string $column): bool {
+    try {
+        $table = str_replace('`', '', $table);
+        $column = str_replace('`', '', $column);
+        $stmt = $pdo->query("SHOW COLUMNS FROM `$table` LIKE " . $pdo->quote($column));
+        return $stmt && $stmt->rowCount() > 0;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
@@ -28,11 +39,37 @@ try {
         $params[':q'] = "%$q%";
     }
 
+    // Detect optional columns (compat with varying schemas)
+    $modifierColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'fk_user_modif') ? 'fk_user_modif' : null;
+    $hasTmsColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'tms');
+    // Detect correct creator column name (fk_user_creator vs fk_user_create)
+    $creatorColumn = null;
+    try {
+        // Common Dolibarr pattern is fk_user_creat (without 'e')
+        $colStmt0 = $pdo->query("SHOW COLUMNS FROM llx_missionsplanet_mission LIKE 'fk_user_creat'");
+        if ($colStmt0 && $colStmt0->rowCount() > 0) {
+            $creatorColumn = 'fk_user_creat';
+        } else {
+            $colStmt1 = $pdo->query("SHOW COLUMNS FROM llx_missionsplanet_mission LIKE 'fk_user_creator'");
+            if ($colStmt1 && $colStmt1->rowCount() > 0) {
+                $creatorColumn = 'fk_user_creator';
+            } else {
+                $colStmt2 = $pdo->query("SHOW COLUMNS FROM llx_missionsplanet_mission LIKE 'fk_user_create'");
+                if ($colStmt2 && $colStmt2->rowCount() > 0) {
+                    $creatorColumn = 'fk_user_create';
+                }
+            }
+        }
+    } catch (Exception $e) {
+        // ignore, leave as null
+        $creatorColumn = null;
+    }
+
     // Count total
     $countSql = "
         SELECT COUNT(*) AS total
         FROM llx_missionsplanet_mission m
-        INNER JOIN llx_user u ON m.nominterprete = u.rowid
+        LEFT JOIN llx_user u ON m.nominterprete = u.rowid
         LEFT JOIN llx_product p ON m.langue = p.rowid
         LEFT JOIN llx_societe s ON s.rowid = m.fk_soc
         WHERE $where";
@@ -42,23 +79,64 @@ try {
     $total = (int)$countStmt->fetchColumn();
 
     // Page data
+    $selectCreator = $creatorColumn !== null
+        ? "uc.firstname AS creator_firstname,\n            uc.lastname AS creator_lastname,"
+        : "NULL AS creator_firstname,\n            NULL AS creator_lastname,";
+    $joinCreator = $creatorColumn !== null ? "LEFT JOIN llx_user uc ON uc.rowid = m.$creatorColumn" : "";
+    $selectModifier = $modifierColumn !== null
+        ? "um.firstname AS modifier_firstname,\n            um.lastname AS modifier_lastname,"
+        : "NULL AS modifier_firstname,\n            NULL AS modifier_lastname,";
+    $joinModifier = $modifierColumn !== null ? "LEFT JOIN llx_user um ON um.rowid = m.$modifierColumn" : "";
+    $selectTms = $hasTmsColumn
+        ? "m.tms AS date_modification_raw,"
+        : "NULL AS date_modification_raw,";
+
     $sql = "
         SELECT
             m.rowid,
             m.ref AS reference_devis,
+            m.label,
             m.nominterprete,
-            m.debutmission,
+            m.datemission,
+            m.heuredebutmission,
+            m.dureemission,
+            m.montant_mission,
+            m.status AS mission_status,
+            m.date_creation,
+            $selectTms
             u.firstname,
             u.lastname,
+            $selectCreator
+            $selectModifier
             p.ref AS produit_ref,
+            p.label AS produit_label,
+            p.price AS produit_price,
+            p.tva_tx AS produit_tva_tx,
             p.rowid AS id_produit_service,
-            s.nom AS client_name
+            s.nom AS client_name,
+            socp.firstname AS prenom_demandeur,
+            socp.lastname AS nom_demandeur,
+            socp.phone AS phone,
+            socp.phone_mobile AS phone_mobile,
+            b.status AS billed_status
         FROM llx_missionsplanet_mission m
-        INNER JOIN llx_user u ON m.nominterprete = u.rowid
+        LEFT JOIN llx_user u ON m.nominterprete = u.rowid
+        $joinCreator
+        $joinModifier
         LEFT JOIN llx_product p ON m.langue = p.rowid
         LEFT JOIN llx_societe s ON s.rowid = m.fk_soc
+        LEFT JOIN llx_socpeople socp ON socp.rowid = m.contactdemandeur
+        LEFT JOIN (
+            SELECT bb.ref, bb.status
+            FROM tble_mission_billed bb
+            INNER JOIN (
+                SELECT ref, MAX(billed_at) AS max_billed_at
+                FROM tble_mission_billed
+                GROUP BY ref
+            ) last ON last.ref = bb.ref AND last.max_billed_at = bb.billed_at
+        ) b ON b.ref = m.ref
         WHERE $where
-        ORDER BY m.debutmission DESC
+        ORDER BY m.datemission DESC, m.heuredebutmission DESC
     ";
 
     if (!$exportAll) {
@@ -78,17 +156,45 @@ try {
     foreach ($rows as &$r) {
         // Build interpreter full name
         $r['interpreter_name'] = trim(($r['firstname'] ?? '') . ' ' . ($r['lastname'] ?? ''));
+        // Build creator full name
+        $r['creator_name'] = trim(($r['creator_firstname'] ?? '') . ' ' . ($r['creator_lastname'] ?? ''));
         // Format date to ISO if needed
-        if (!empty($r['debutmission'])) {
+        if (!empty($r['datemission'])) {
             try {
-                $dt = new DateTime($r['debutmission']);
-                $r['debutmission_iso'] = $dt->format('Y-m-d H:i:s');
+                $dt3 = new DateTime($r['datemission']);
+                $r['datemission_iso'] = $dt3->format('Y-m-d H:i:s');
             } catch (Exception $e) {
-                $r['debutmission_iso'] = $r['debutmission'];
+                $r['datemission_iso'] = $r['datemission'];
             }
         } else {
-            $r['debutmission_iso'] = null;
+            $r['datemission_iso'] = null;
         }
+        if (!empty($r['date_creation'])) {
+            try {
+                $dc = new DateTime($r['date_creation']);
+                $r['date_creation_iso'] = $dc->format('Y-m-d H:i:s');
+            } catch (Exception $e) {
+                $r['date_creation_iso'] = $r['date_creation'];
+            }
+        } else {
+            $r['date_creation_iso'] = null;
+        }
+
+        $rawModDate = $r['date_modification_raw'] ?? null;
+        $r['date_modification'] = $rawModDate;
+        if (!empty($rawModDate)) {
+            try {
+                $dm = new DateTime($rawModDate);
+                $r['date_modification_iso'] = $dm->format('Y-m-d H:i:s');
+            } catch (Exception $e) {
+                $r['date_modification_iso'] = $rawModDate;
+            }
+        } else {
+            $r['date_modification_iso'] = null;
+        }
+
+        $updatedBy = trim(($r['modifier_firstname'] ?? '') . ' ' . ($r['modifier_lastname'] ?? ''));
+        $r['updated_by'] = $updatedBy !== '' ? $updatedBy : null;
     }
 
     echo json_encode([

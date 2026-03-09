@@ -99,11 +99,17 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
+                Theme(
+                  data: Theme.of(context).copyWith(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
                     DropdownButton<int?>(
                       value: _filterYear,
                       hint: const Text('Année'),
+                        isDense: true,
                       items: [
                         const DropdownMenuItem<int?>(
                           value: null,
@@ -117,11 +123,12 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
                         ),
                       ],
                       onChanged: (v) => setState(() => _filterYear = v),
-                    ),
-                    const SizedBox(width: 12),
+                      ),
+                      const SizedBox(width: 8),
                     DropdownButton<int?>(
                       value: _filterMonth,
                       hint: const Text('Mois'),
+                        isDense: true,
                       items: [
                         const DropdownMenuItem<int?>(
                           value: null,
@@ -137,22 +144,27 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
                         ),
                       ],
                       onChanged: (v) => setState(() => _filterMonth = v),
-                    ),
-                    const SizedBox(width: 12),
-                    TextButton.icon(
-                      onPressed: () => setState(() {
-                        _filterYear = null;
-                        _filterMonth = null;
-                      }),
-                      icon: const Icon(Icons.clear, color: Color(0xFF000091)),
-                      label: const Text(
-                        'Réinitialiser',
-                        style: TextStyle(color: Color(0xFF000091)),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          _filterYear = null;
+                          _filterMonth = null;
+                        }),
+                        icon: const Icon(Icons.clear, color: Color(0xFF000091)),
+                        label: const Text(
+                          'Réinitialiser',
+                          style: TextStyle(color: Color(0xFF000091)),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: const Size(0, 32),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -182,7 +194,7 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
 
     return ListView.builder(
       itemCount: filtered.length,
-      itemBuilder: (context, index) {
+      itemBuilder: (ctx, index) {
         final mission = filtered[index];
 
         final ref = (mission['reference_devis'] ?? '')?.toString() ?? '';
@@ -203,12 +215,11 @@ class _InterpreterMissionsPageState extends State<InterpreterMissionsPage> {
                     ),
                     tooltip: 'Copier la référence',
                     onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(ctx);
                       await Clipboard.setData(ClipboardData(text: ref));
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Référence copiée')),
-                        );
-                      }
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Référence copiée')),
+                      );
                     },
                   ),
               ],
