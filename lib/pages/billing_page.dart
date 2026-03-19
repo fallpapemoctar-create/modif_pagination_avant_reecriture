@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../core/brand_footer.dart';
 import '../core/responsive_helper.dart';
@@ -55,6 +56,7 @@ class _BillingPageState extends State<BillingPage> {
 	bool _generatingPdf = false;
 	pw.Font? _pdfFontRegular;
 	pw.Font? _pdfFontBold;
+	pw.MemoryImage? _pdfLogoImage;
 	CompanyInfo? _companyInfo;
 	bool _loadingCompanyInfo = false;
 
@@ -691,7 +693,7 @@ class _BillingPageState extends State<BillingPage> {
 		}
 		setState(() => _generatingPdf = true);
 		try {
-			await _ensurePdfFonts();
+			await _ensurePdfAssets();
 			final headers = ['Désignation', 'TVA', 'P.U. HT', 'Qté', 'Total HT'];
 			final rows = _missions
 				.map(
@@ -705,6 +707,7 @@ class _BillingPageState extends State<BillingPage> {
 				)
 				.toList();
 			final clientLabel = _currentClientName.isEmpty ? 'Client non renseigné' : _currentClientName;
+			final clientAddressLines = _clientAddressLinesForPdf();
 			final now = DateTime.now();
 			final theme = pw.ThemeData.withFont(base: _pdfFontRegular!, bold: _pdfFontBold!);
 			final doc = pw.Document(theme: theme);
@@ -712,7 +715,15 @@ class _BillingPageState extends State<BillingPage> {
 			final borderColor = PdfColor.fromHex('#E5E7EB');
 			final companyInfo = _resolvedCompanyInfo;
 			final companyLines = _companyInfoLinesForPdf(companyInfo);
-			final companyCard = companyLines.isEmpty
+			final hasLogo = _pdfLogoImage != null;
+			final logoWidget = hasLogo
+				? pw.Container(
+					margin: const pw.EdgeInsets.only(bottom: 8),
+					height: 48,
+					child: pw.Image(_pdfLogoImage!, fit: pw.BoxFit.contain),
+				)
+				: null;
+			final companyCard = (companyLines.isEmpty && !hasLogo)
 				? null
 				: pw.Container(
 					padding: const pw.EdgeInsets.all(12),
@@ -746,7 +757,7 @@ class _BillingPageState extends State<BillingPage> {
 					crossAxisAlignment: pw.CrossAxisAlignment.start,
 					children: [
 						pw.Text(
-							'Destinaire',
+							'Destinataire',
 							style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#BE185D')),
 						),
 						pw.SizedBox(height: 4),
@@ -754,7 +765,13 @@ class _BillingPageState extends State<BillingPage> {
 							clientLabel,
 							style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13),
 						),
-						pw.SizedBox(height: 2),
+						if (clientAddressLines.isNotEmpty) ...[
+							pw.SizedBox(height: 2),
+							...clientAddressLines.map(
+								(line) => pw.Text(line, style: const pw.TextStyle(fontSize: 11)),
+							),
+						],
+						pw.SizedBox(height: clientAddressLines.isNotEmpty ? 6 : 2),
 						pw.Text('Période : ${_monthLabel(_selectedMonth)}', style: const pw.TextStyle(fontSize: 11)),
 						pw.Text('Lignes sélectionnées : ${_missions.length}', style: const pw.TextStyle(fontSize: 11)),
 						pw.Text('Total HT estimé : ${_formatCurrency(_totalHt)}', style: const pw.TextStyle(fontSize: 11)),
@@ -769,20 +786,28 @@ class _BillingPageState extends State<BillingPage> {
 				headerColumns.add(pw.SizedBox(width: 14));
 			}
 			headerColumns.add(pw.Expanded(flex: 3, child: clientCard));
+			final headerStack = <pw.Widget>[];
+			if (logoWidget != null) {
+				headerStack.add(
+					pw.Align(
+						alignment: pw.Alignment.centerLeft,
+						child: logoWidget,
+					),
+				);
+			}
+			headerStack.add(
+				pw.Row(
+					crossAxisAlignment: pw.CrossAxisAlignment.start,
+					children: headerColumns,
+				),
+			);
 			doc.addPage(
 				pw.MultiPage(
 					pageFormat: PdfPageFormat.a4,
 					margin: const pw.EdgeInsets.fromLTRB(32, 32, 32, 40),
 					build: (context) => [
-						pw.Text(
-							'Résumé de facturation',
-							style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: accent),
-						),
 						pw.SizedBox(height: 6),
-						pw.Row(
-							crossAxisAlignment: pw.CrossAxisAlignment.start,
-							children: headerColumns,
-						),
+						...headerStack,
 						pw.SizedBox(height: 16),
 						pw.TableHelper.fromTextArray(
 							headers: headers,
@@ -846,9 +871,17 @@ class _BillingPageState extends State<BillingPage> {
 		}
 	}
 
-	Future<void> _ensurePdfFonts() async {
+	Future<void> _ensurePdfAssets() async {
 		_pdfFontRegular ??= await PdfGoogleFonts.openSansRegular();
 		_pdfFontBold ??= await PdfGoogleFonts.openSansBold();
+		if (_pdfLogoImage == null) {
+			try {
+				final data = await rootBundle.load('assets/logo.png');
+				_pdfLogoImage = pw.MemoryImage(data.buffer.asUint8List());
+			} catch (_) {
+				_pdfLogoImage = null;
+			}
+		}
 	}
 
 	List<DateTime> _buildAvailableMonths({int monthsBack = 12}) {
@@ -1168,6 +1201,76 @@ class _BillingPageState extends State<BillingPage> {
 		lines.addAll(info.addressLines);
 		lines.addAll(_companyInfoMetaLines(info));
 		return lines;
+	}
+
+	List<String> _clientAddressLinesForPdf() {
+		final mission = _missionWithClientDetails();
+		if (mission == null) return [];
+		final lines = <String>[];
+		final address1 = _stringValueFromKeys(mission, const [
+			'client_address',
+			'client_address_line1',
+			'client_address1',
+			'adresse_client',
+			'adresse',
+			'address',
+		]);
+		final address2 = _stringValueFromKeys(mission, const [
+			'client_address2',
+			'client_address_line2',
+			'adresse_client2',
+			'adresse2',
+			'address2',
+		]);
+		final zip = _stringValueFromKeys(mission, const ['client_zip', 'zip', 'cp']);
+		final city = _stringValueFromKeys(mission, const ['client_town', 'client_city', 'ville', 'town', 'city']);
+		if (address1.isNotEmpty) {
+			lines.add(address1);
+		}
+		if (address2.isNotEmpty && address2 != address1) {
+			lines.add(address2);
+		}
+		final cityLine = [zip, city].where((part) => part.isNotEmpty).join(' ');
+		if (cityLine.isNotEmpty) {
+			lines.add(cityLine);
+		}
+		return lines;
+	}
+
+	Map<String, dynamic>? _missionWithClientDetails() {
+		for (final mission in _missions) {
+			if (_hasClientAddressData(mission)) return mission;
+		}
+		if (_missions.isNotEmpty) return _missions.first;
+		for (final mission in _allClientMissions) {
+			if (_hasClientAddressData(mission)) return mission;
+		}
+		return _allClientMissions.isNotEmpty ? _allClientMissions.first : null;
+	}
+
+	bool _hasClientAddressData(Map<String, dynamic> mission) {
+		return _stringValueFromKeys(mission, const [
+			'client_address',
+			'client_address_line1',
+			'client_address1',
+			'adresse_client',
+			'adresse',
+			'address',
+		])
+				.isNotEmpty ||
+			_stringValueFromKeys(mission, const ['client_zip', 'zip', 'cp', 'client_town', 'client_city', 'ville', 'town', 'city']).isNotEmpty;
+	}
+
+	String _stringValueFromKeys(Map<String, dynamic> mission, List<String> keys) {
+		for (final key in keys) {
+			final value = mission[key];
+			if (value == null) continue;
+			final text = value.toString().trim();
+			if (text.isNotEmpty) {
+				return text;
+			}
+		}
+		return '';
 	}
 
 	double _parseAmount(dynamic raw) {

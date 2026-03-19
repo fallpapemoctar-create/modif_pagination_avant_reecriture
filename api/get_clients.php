@@ -18,7 +18,7 @@ try {
         $limit = 500;
     }
 
-    $sql = "SELECT DISTINCT nom AS client_name FROM llx_societe WHERE nom IS NOT NULL AND nom <> ''";
+    $sql = "SELECT rowid AS id, nom AS name FROM llx_societe WHERE nom IS NOT NULL AND nom <> ''";
     $params = [];
     if ($q !== '') {
         $sql .= " AND nom LIKE :search";
@@ -35,7 +35,10 @@ try {
 
     $clients = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $clients[] = $row['client_name'];
+        $clients[] = [
+            'id' => isset($row['id']) ? (int)$row['id'] : null,
+            'name' => $row['name'] ?? '',
+        ];
     }
 
     echo json_encode([

@@ -66,13 +66,9 @@ try {
     $company = $defaults;
     foreach ($pairs as $name => $value) {
         $value = trim((string) $value);
-        if ($value === '') {
-            continue;
-        }
 
         if ($name === 'MAIN_INFO_SOCIETE_SIRET' || $name === 'MAIN_INFO_SOCIETE_SIREN') {
-            // Prefer SIRET but fall back to SIREN when SIRET is missing.
-            if ($name === 'MAIN_INFO_SOCIETE_SIRET' || $company['siret'] === '' || $company['siret'] === $defaults['siret']) {
+            if ($name === 'MAIN_INFO_SOCIETE_SIRET' || $company['siret'] === $defaults['siret']) {
                 $company['siret'] = $value;
             }
             continue;
