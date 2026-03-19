@@ -3,6 +3,14 @@ import 'package:http/http.dart' as http;
 import '../models/mission.dart';
 import '../core/app_config.dart';
 
+class MissionApiResult {
+  final bool success;
+  final String? message;
+  final Map<String, dynamic>? data;
+
+  const MissionApiResult({required this.success, this.message, this.data});
+}
+
 class MissionService {
   static String get baseUrl => AppConfig.instance.apiBaseUrl;
 
@@ -224,25 +232,56 @@ class MissionService {
     return jsonDecode(response.body)["success"] == true;
   }
 
-  // Convenience methods that accept a raw Map payload (useful when server expects flexible keys)
-  static Future<bool> addMissionMap(Map<String, dynamic> payload) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/add_mission_interpreter.php"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(payload),
-    );
-    if (response.statusCode != 200) return false;
-    return jsonDecode(response.body)["success"] == true;
+  static MissionApiResult _parseMissionResponse(http.Response response) {
+    try {
+      final dynamic decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final bool success = decoded['success'] == true;
+        final dynamic rawMessage = decoded['message'] ?? decoded['error'];
+        final String? message = rawMessage == null
+            ? null
+            : rawMessage.toString().trim().isEmpty
+                ? null
+                : rawMessage.toString().trim();
+        return MissionApiResult(success: success, message: message, data: decoded);
+      }
+      if (decoded is bool) {
+        return MissionApiResult(success: decoded, data: {'success': decoded});
+      }
+    } catch (_) {
+      // ignore JSON parsing errors, fall back to status code message
+    }
+    final bool ok = response.statusCode >= 200 && response.statusCode < 300;
+    final body = response.body.trim();
+    final fallback = body.isNotEmpty ? body : 'Erreur serveur (${response.statusCode})';
+    return MissionApiResult(success: ok, message: ok ? null : fallback, data: null);
   }
 
-  static Future<bool> updateMissionMap(Map<String, dynamic> payload) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/update_mission_interpreter.php"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(payload),
-    );
-    if (response.statusCode != 200) return false;
-    return jsonDecode(response.body)["success"] == true;
+  // Convenience methods that accept a raw Map payload (useful when server expects flexible keys)
+  static Future<MissionApiResult> addMissionMap(Map<String, dynamic> payload) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/add_mission_interpreter.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(payload),
+      );
+      return _parseMissionResponse(response);
+    } catch (e) {
+      return MissionApiResult(success: false, message: 'Erreur réseau: $e');
+    }
+  }
+
+  static Future<MissionApiResult> updateMissionMap(Map<String, dynamic> payload) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/update_mission_interpreter.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(payload),
+      );
+      return _parseMissionResponse(response);
+    } catch (e) {
+      return MissionApiResult(success: false, message: 'Erreur réseau: $e');
+    }
   }
 
 }

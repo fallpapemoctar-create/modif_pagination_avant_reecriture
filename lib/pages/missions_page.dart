@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../core/auth_manager.dart';
 import '../services/mission_service.dart';
 import '../core/user_rights.dart';
 import '../core/responsive_helper.dart';
@@ -74,6 +75,30 @@ class _MissionsPageState extends State<MissionsPage> {
                 return combined.contains(q) || phone.contains(q);
               }).toList(),
       );
+  }
+
+  String _missionPageFriendlyError(String? message, {required bool isCreation}) {
+    final fallback = isCreation
+        ? 'Impossible de créer la mission.'
+        : 'Impossible de mettre à jour la mission.';
+    if (message == null || message.trim().isEmpty) {
+      return fallback;
+    }
+    final lower = message.toLowerCase();
+    final action = isCreation ? 'créer' : 'mettre à jour';
+    if (lower.contains('langue') && (lower.contains('vide') || lower.contains('null'))) {
+      return 'Sélectionnez un produit/langue existant avant de $action la mission.';
+    }
+    if (lower.contains('interpreter') && lower.contains('requis')) {
+      return 'Choisissez un interprète avant de $action la mission.';
+    }
+    if (lower.contains('fk_soc') || lower.contains('client')) {
+      return 'Associez un client valide avant de $action la mission.';
+    }
+    if (lower.contains('fk_user_creat') || lower.contains('fk_user_creator')) {
+      return 'Impossible d’identifier l’utilisateur connecté. Veuillez vous reconnecter.';
+    }
+    return message;
   }
 
   double _getHorizontalPadding(BuildContext context) {
@@ -350,35 +375,33 @@ class _MissionsPageState extends State<MissionsPage> {
       'status_payment': paid ? 1 : 0,
     };
     if (isEdit) payload['id'] = mission['id'];
+    final int currentUserId = AuthManager.userId;
+    if (currentUserId > 0) {
+      payload[isEdit ? 'modifier_id' : 'creator_id'] = currentUserId;
+    }
 
-    try {
-      final success = isEdit
-          ? await MissionService.updateMissionMap(payload)
-          : await MissionService.addMissionMap(payload);
-      if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      if (success) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Mission enregistrée')),
-        );
-        if (_selectedId != null) {
-          setState(
-            () => _detailFuture = MissionService.getMissionsByInterpreter(
-              _selectedId!,
-            ),
-          );
-        }
-      } else {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Erreur lors de l\'enregistrement')),
+    final MissionApiResult result = isEdit
+        ? await MissionService.updateMissionMap(payload)
+        : await MissionService.addMissionMap(payload);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.success) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Mission enregistrée')),
+      );
+      if (_selectedId != null) {
+        setState(
+          () => _detailFuture = MissionService.getMissionsByInterpreter(
+            _selectedId!,
+          ),
         );
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erreur: $e')));
-      }
+    } else {
+      final msg = _missionPageFriendlyError(
+        result.message,
+        isCreation: !isEdit,
+      );
+      messenger.showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 

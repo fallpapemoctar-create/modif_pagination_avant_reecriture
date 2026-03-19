@@ -5,6 +5,51 @@ header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Content-Type: application/json");
 require_once "config.php";
 
+function columnExists(PDO $pdo, string $table, string $column): bool {
+    try {
+        $table = str_replace('`', '', $table);
+        $column = str_replace('`', '', $column);
+        $stmt = $pdo->query("SHOW COLUMNS FROM `$table` LIKE " . $pdo->quote($column));
+        return $stmt && $stmt->rowCount() > 0;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function sanitizeMissionTypes($value): array {
+    $source = [];
+    if (is_array($value)) {
+        $source = $value;
+    } elseif (is_string($value) && $value !== '') {
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            $source = $decoded;
+        } else {
+            $source = explode(',', $value);
+        }
+    } elseif ($value === null || $value === '') {
+        return [];
+    } else {
+        $source = [$value];
+    }
+
+    $result = [];
+    foreach ($source as $item) {
+        if (is_array($item)) {
+            $item = implode(' ', $item);
+        }
+        $str = trim((string)$item);
+        if ($str === '') {
+            continue;
+        }
+        if (!isset($result[$str])) {
+            $result[$str] = true;
+        }
+    }
+
+    return array_keys($result);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
@@ -27,12 +72,21 @@ try {
 
     $fields = [];
     $params = [':id' => $id];
+    $hasLabelColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'label');
+    $hasMissionTypesColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'mission_types');
+    $hasClientColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'fk_soc');
+    $hasContactColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'contactdemandeur');
+    $hasDescriptionColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'description');
+    $hasMontantColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'montant_mission');
+    $hasStatusPaymentColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'status_payment');
+    $modifierColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'fk_user_modif') ? 'fk_user_modif' : null;
 
     if (isset($data['interpreter_id'])) { $fields[] = 'nominterprete = :nominterprete'; $params[':nominterprete'] = (int)$data['interpreter_id']; }
     if (isset($data['reference_devis'])) { $fields[] = 'ref = :ref'; $params[':ref'] = trim($data['reference_devis']); }
     if (isset($data['debutmission'])) { $fields[] = 'debutmission = :debutmission'; $params[':debutmission'] = trim($data['debutmission']); }
     if (isset($data['finmission'])) { $fields[] = 'finmission = :finmission'; $params[':finmission'] = trim($data['finmission']); }
-    if (isset($data['status_payment'])) { $fields[] = 'status_payment = :status_payment'; $params[':status_payment'] = (int)$data['status_payment']; }
+    if ($hasStatusPaymentColumn && isset($data['status_payment'])) { $fields[] = 'status_payment = :status_payment'; $params[':status_payment'] = (int)$data['status_payment']; }
+    if ($hasLabelColumn && array_key_exists('label', $data)) { $fields[] = 'label = :label'; $params[':label'] = trim((string)$data['label']); }
 
     // Raw mission fields
     if (isset($data['datemission'])) { $fields[] = 'datemission = :datemission'; $params[':datemission'] = trim($data['datemission']); }
@@ -49,9 +103,39 @@ try {
         if ($row && isset($row['rowid'])) { $fields[] = 'langue = :langue'; $params[':langue'] = (int)$row['rowid']; }
     }
 
+    if ($hasMissionTypesColumn && array_key_exists('mission_types', $data)) {
+        $missionTypes = sanitizeMissionTypes($data['mission_types']);
+        $missionTypesJson = json_encode($missionTypes, JSON_UNESCAPED_UNICODE);
+        if ($missionTypesJson === false) {
+            $missionTypesJson = json_encode([]);
+        }
+        $fields[] = 'mission_types = :mission_types';
+        $params[':mission_types'] = $missionTypesJson;
+    }
+
+    if ($hasClientColumn && array_key_exists('client_id', $data)) {
+        $fields[] = 'fk_soc = :fk_soc';
+        $params[':fk_soc'] = (int)$data['client_id'] > 0 ? (int)$data['client_id'] : null;
+    }
+
+    if ($hasContactColumn && array_key_exists('contact_id', $data)) {
+        $fields[] = 'contactdemandeur = :contactdemandeur';
+        $params[':contactdemandeur'] = (int)$data['contact_id'] > 0 ? (int)$data['contact_id'] : 0;
+    }
+
+    if ($hasDescriptionColumn && array_key_exists('commentaires', $data)) {
+        $fields[] = 'description = :description';
+        $comment = trim((string)$data['commentaires']);
+        $params[':description'] = $comment !== '' ? $comment : null;
+    }
+    if ($modifierColumn !== null && isset($data['modifier_id'])) {
+        $fields[] = "$modifierColumn = :modifier_id";
+        $params[':modifier_id'] = (int)$data['modifier_id'];
+    }
+
     // montant_mission recompute if tarif provided and dates available
     $tarifHoraire = isset($data['tarif_horaire']) ? (float)$data['tarif_horaire'] : null;
-    if ($tarifHoraire !== null) {
+    if ($hasMontantColumn && $tarifHoraire !== null) {
         // We need debut and fin; if not provided in payload, fetch current values
         $stmtCurrent = $pdo->prepare("SELECT debutmission, finmission FROM llx_missionsplanet_mission WHERE rowid = :id");
         $stmtCurrent->execute([':id' => $id]);

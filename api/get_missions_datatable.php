@@ -1,6 +1,10 @@
 <?php
 require_once __DIR__ . "/config.php";
 
+// Exporting all missions can load a lot of rows; lift resource limits defensively
+@ini_set('memory_limit', '512M');
+@set_time_limit(120);
+
 function columnExists(PDO $pdo, string $table, string $column): bool {
     try {
         $table = str_replace('`', '', $table);
@@ -10,6 +14,40 @@ function columnExists(PDO $pdo, string $table, string $column): bool {
     } catch (Exception $e) {
         return false;
     }
+}
+
+function normalizeMissionTypesField($value): array {
+    $source = [];
+    if (is_array($value)) {
+        $source = $value;
+    } elseif (is_string($value) && $value !== '') {
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            $source = $decoded;
+        } else {
+            $source = explode(',', $value);
+        }
+    } elseif ($value === null || $value === '') {
+        return [];
+    } else {
+        $source = [$value];
+    }
+
+    $result = [];
+    foreach ($source as $item) {
+        if (is_array($item)) {
+            $item = implode(' ', $item);
+        }
+        $str = trim((string)$item);
+        if ($str === '') {
+            continue;
+        }
+        if (!isset($result[$str])) {
+            $result[$str] = true;
+        }
+    }
+
+    return array_keys($result);
 }
 
 header("Access-Control-Allow-Origin: *");
@@ -42,6 +80,7 @@ try {
     // Detect optional columns (compat with varying schemas)
     $modifierColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'fk_user_modif') ? 'fk_user_modif' : null;
     $hasTmsColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'tms');
+    $hasMissionTypesColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'mission_types');
     // Detect correct creator column name (fk_user_creator vs fk_user_create)
     $creatorColumn = null;
     try {
@@ -90,6 +129,9 @@ try {
     $selectTms = $hasTmsColumn
         ? "m.tms AS date_modification_raw,"
         : "NULL AS date_modification_raw,";
+    $selectMissionTypes = $hasMissionTypesColumn
+        ? "m.mission_types,"
+        : "NULL AS mission_types,";
 
     $sql = "
         SELECT
@@ -97,11 +139,14 @@ try {
             m.ref AS reference_devis,
             m.label,
             m.nominterprete,
+            m.fk_soc AS client_id,
+            m.contactdemandeur AS contact_id,
+            m.description AS commentaires,
             m.datemission,
             m.heuredebutmission,
             m.dureemission,
-            m.montant_mission,
             m.status AS mission_status,
+            $selectMissionTypes
             m.date_creation,
             $selectTms
             u.firstname,
@@ -114,6 +159,9 @@ try {
             p.tva_tx AS produit_tva_tx,
             p.rowid AS id_produit_service,
             s.nom AS client_name,
+            s.address AS client_address,
+            s.zip AS client_zip,
+            s.town AS client_town,
             socp.firstname AS prenom_demandeur,
             socp.lastname AS nom_demandeur,
             socp.phone AS phone,
@@ -195,6 +243,11 @@ try {
 
         $updatedBy = trim(($r['modifier_firstname'] ?? '') . ' ' . ($r['modifier_lastname'] ?? ''));
         $r['updated_by'] = $updatedBy !== '' ? $updatedBy : null;
+        if ($hasMissionTypesColumn) {
+            $r['mission_types'] = normalizeMissionTypesField($r['mission_types'] ?? []);
+        } else {
+            $r['mission_types'] = [];
+        }
     }
 
     echo json_encode([
