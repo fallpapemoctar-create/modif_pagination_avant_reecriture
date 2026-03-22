@@ -32,19 +32,19 @@ class HomePage extends StatelessWidget {
     final views = <Widget>[];
 
     if (rights.canManageInterpreters() || rights.isAdmin()) {
-      tabs.add(const Tab(icon: Icon(Icons.people), text: "Interprètes"));
+      tabs.add(const Tab(text: "Interprètes"));
       views.add(InterpretersPage(userRights: rights));
     }
     if (rights.canManageMissions() || rights.isAdmin()) {
-      tabs.add(const Tab(icon: Icon(Icons.table_rows), text: "Missions (Tableau)"));
+      tabs.add(const Tab(text: "Missions (Tableau)"));
       views.add(MissionsTablePage(userRights: rights));
-      tabs.add(const Tab(icon: Icon(Icons.receipt_long), text: "Facturation"));
+      tabs.add(const Tab(text: "Facturation"));
       views.add(BillingPage(userRights: rights));
     }
     if (rights.isAdmin()) {
-      tabs.add(const Tab(icon: Icon(Icons.admin_panel_settings), text: "Admin"));
+      tabs.add(const Tab(text: "Admin"));
       views.add(AdminPage(userRights: rights));
-      tabs.add(const Tab(icon: Icon(Icons.download), text: "Export"));
+      tabs.add(const Tab(text: "Export"));
       views.add(const ExportPage());
     }
 
@@ -56,7 +56,7 @@ class HomePage extends StatelessWidget {
           backgroundColor: Colors.white,
           foregroundColor: const Color(0xFF161616),
           elevation: 0,
-          toolbarHeight: 72,
+            toolbarHeight: 60,
           title: Row(
             children: [
               // Logo Planet Traduction
@@ -129,7 +129,7 @@ class HomePage extends StatelessWidget {
             ],
           ),
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(49.0),
+              preferredSize: const Size.fromHeight(40.0),
             child: Column(
               children: [
                 Container(
@@ -139,18 +139,18 @@ class HomePage extends StatelessWidget {
                     labelColor: const Color(0xFF000091),
                     unselectedLabelColor: const Color(0xFF666666),
                     labelStyle: const TextStyle(
-                      fontSize: 16,
+                        fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
                     unselectedLabelStyle: const TextStyle(
-                      fontSize: 16,
+                        fontSize: 15,
                       fontWeight: FontWeight.w400,
                     ),
                     indicator: const BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
                           color: Color(0xFF000091),
-                          width: 4,
+                            width: 3,
                         ),
                       ),
                     ),

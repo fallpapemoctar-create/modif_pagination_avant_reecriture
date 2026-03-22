@@ -21,6 +21,7 @@ import '../services/mission_service.dart';
 import '../widgets/client_autocomplete_field.dart';
 import '../utils/pdf_download_helper_stub.dart'
 	if (dart.library.html) '../utils/pdf_download_helper_web.dart';
+import 'missions_table_page_arguments.dart';
 
 class BillingPageArguments {
 	const BillingPageArguments({required this.missions});
@@ -424,6 +425,17 @@ class _BillingPageState extends State<BillingPage> {
 						? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
 						: const Icon(Icons.picture_as_pdf_outlined),
 					label: Text(_generatingPdf ? 'Préparation...' : 'Générer facture en PDF'),
+				),
+				OutlinedButton.icon(
+					onPressed: () {
+						Navigator.pushNamed(
+							context,
+							'/missions-table',
+							arguments: const MissionsTablePageArguments(showNewMissionForm: true),
+						);
+					},
+					icon: const Icon(Icons.add_circle_outline),
+					label: const Text('Nouvelle mission'),
 				),
 				OutlinedButton.icon(
 					onPressed: _lineEditors.isEmpty ? null : _resetAllLines,
