@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . "/config.php";
+require_once __DIR__ . "/billing_helpers.php";
 
 // Exporting all missions can load a lot of rows; lift resource limits defensively
 @ini_set('memory_limit', '512M');
@@ -73,7 +74,7 @@ try {
     $where = "m.status <> 9";
     $params = [];
     if ($q !== '') {
-        $where .= " AND (m.ref LIKE :q OR u.firstname LIKE :q OR u.lastname LIKE :q OR s.nom LIKE :q OR p.ref LIKE :q)";
+        $where .= " AND (m.ref LIKE :q OR u.firstname LIKE :q OR u.lastname LIKE :q OR s.nom LIKE :q OR p.ref LIKE :q OR cb.invoice_number LIKE :q OR cb.status_label LIKE :q)";
         $params[':q'] = "%$q%";
     }
 
@@ -104,6 +105,8 @@ try {
         $creatorColumn = null;
     }
 
+    ensureClientBillingTable($pdo);
+
     // Count total
     $countSql = "
         SELECT COUNT(*) AS total
@@ -111,6 +114,19 @@ try {
         LEFT JOIN llx_user u ON m.nominterprete = u.rowid
         LEFT JOIN llx_product p ON m.langue = p.rowid
         LEFT JOIN llx_societe s ON s.rowid = m.fk_soc
+        LEFT JOIN (
+            SELECT cb_inner.mission_ref,
+                   cb_inner.invoice_number,
+                   cb_inner.status_label
+            FROM tble_client_billed cb_inner
+            INNER JOIN (
+                SELECT mission_ref, MAX(billed_at) AS max_billed_at
+                FROM tble_client_billed
+                WHERE category = 'client'
+                GROUP BY mission_ref
+            ) latest_cb ON latest_cb.mission_ref = cb_inner.mission_ref AND latest_cb.max_billed_at = cb_inner.billed_at
+            WHERE cb_inner.category = 'client'
+        ) cb ON cb.mission_ref = m.ref
         WHERE $where";
     $countStmt = $pdo->prepare($countSql);
     foreach ($params as $k => $v) $countStmt->bindValue($k, $v);
@@ -166,7 +182,11 @@ try {
             socp.lastname AS nom_demandeur,
             socp.phone AS phone,
             socp.phone_mobile AS phone_mobile,
-            b.status AS billed_status
+            b.status AS billed_status,
+            cb.status_code AS client_billed_status,
+            cb.status_label AS client_billed_status_label,
+            cb.invoice_number AS client_invoice_number,
+            cb.billed_at AS client_billed_at
         FROM llx_missionsplanet_mission m
         LEFT JOIN llx_user u ON m.nominterprete = u.rowid
         $joinCreator
@@ -183,6 +203,21 @@ try {
                 GROUP BY ref
             ) last ON last.ref = bb.ref AND last.max_billed_at = bb.billed_at
         ) b ON b.ref = m.ref
+        LEFT JOIN (
+            SELECT cb_inner.mission_ref,
+                   cb_inner.invoice_number,
+                   cb_inner.status_code,
+                   cb_inner.status_label,
+                   cb_inner.billed_at
+            FROM tble_client_billed cb_inner
+            INNER JOIN (
+                SELECT mission_ref, MAX(billed_at) AS max_billed_at
+                FROM tble_client_billed
+                WHERE category = 'client'
+                GROUP BY mission_ref
+            ) latest_cb ON latest_cb.mission_ref = cb_inner.mission_ref AND latest_cb.max_billed_at = cb_inner.billed_at
+            WHERE cb_inner.category = 'client'
+        ) cb ON cb.mission_ref = m.ref
         WHERE $where
         ORDER BY m.datemission DESC, m.heuredebutmission DESC
     ";

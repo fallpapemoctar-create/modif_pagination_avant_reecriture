@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -8,13 +9,16 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import '../core/auth_manager.dart';
 import '../core/brand_footer.dart';
 import '../core/responsive_helper.dart';
 import '../core/user_rights.dart';
+import '../core/models/invoice_line.dart';
 import '../models/company_info.dart';
-import '../services/client_service.dart';
+import '../services/billing_service.dart';
 import '../services/company_info_service.dart';
 import '../services/mission_service.dart';
+import '../widgets/client_autocomplete_field.dart';
 import '../utils/pdf_download_helper_stub.dart'
 	if (dart.library.html) '../utils/pdf_download_helper_web.dart';
 
@@ -22,6 +26,8 @@ class BillingPageArguments {
 	const BillingPageArguments({required this.missions});
 	final List<Map<String, dynamic>> missions;
 }
+
+enum BillingSection { creation, invoices }
 
 class BillingPage extends StatefulWidget {
 	const BillingPage({super.key, required this.userRights});
@@ -32,108 +38,56 @@ class BillingPage extends StatefulWidget {
 }
 
 class _BillingPageState extends State<BillingPage> {
-	TextEditingController? _clientFieldCtrl;
-	FocusNode? _clientFocusNode;
-	final GlobalKey _clientAutocompleteKey = GlobalKey();
-	String _clientInput = '';
-	List<String> _clientOptions = [];
-	List<Map<String, dynamic>> _missions = [];
-	List<Map<String, dynamic>> _allClientMissions = [];
+	BillingSection _activeSection = BillingSection.creation;
+	bool _sidebarCollapsed = false;
 	bool _routeArgsLoaded = false;
+
+	String _clientInput = '';
+	String? _loadError;
 	bool _loadingMissions = false;
-	bool _loadingClients = false;
 	bool _isTableFullscreen = false;
 	final ScrollController _tableVerticalController = ScrollController();
 	final ScrollController _tableHorizontalController = ScrollController();
 	final ScrollController _fullscreenVerticalController = ScrollController();
 	final ScrollController _fullscreenHorizontalController = ScrollController();
-	String? _loadError;
-	String? _clientsError;
-	late final List<DateTime> _availableMonths;
-	late DateTime _selectedMonth;
+
 	late final NumberFormat _currencyFormat;
 	late final NumberFormat _quantityFormat;
+	late final List<DateTime> _availableMonths;
+	late DateTime _selectedMonth;
+
+	List<Map<String, dynamic>> _allClientMissions = [];
+	List<Map<String, dynamic>> _missions = [];
+	final List<_EditableInvoiceLine> _lineEditors = [];
+	int? _selectedLineIndex;
+	bool _showLinePanel = false;
+	bool _loadingDraft = false;
+	bool _savingDraft = false;
+	String? _draftKey;
+
+	TextEditingController? _lineDesignationCtrl;
+	TextEditingController? _lineQuantityCtrl;
+	TextEditingController? _lineUnitPriceCtrl;
+	TextEditingController? _lineNotesCtrl;
+
+	Timer? _draftSaveTimer;
+
 	bool _generatingPdf = false;
+	CompanyInfo? _companyInfo;
+	bool _loadingCompanyInfo = false;
 	pw.Font? _pdfFontRegular;
 	pw.Font? _pdfFontBold;
 	pw.MemoryImage? _pdfLogoImage;
-	CompanyInfo? _companyInfo;
-	bool _loadingCompanyInfo = false;
 
-	static const List<String> _monthNames = [
-		'Janvier',
-		'Février',
-		'Mars',
-		'Avril',
-		'Mai',
-		'Juin',
-		'Juillet',
-		'Août',
-		'Septembre',
-		'Octobre',
-		'Novembre',
-		'Décembre',
-	];
-
-	double? _parseDurationMinutes(dynamic raw) {
-		if (raw == null) return null;
-		if (raw is num) return raw.toDouble();
-		final text = raw.toString().trim();
-		if (text.isEmpty) return null;
-		final normalized = text.replaceAll(',', '.');
-		final hhmmMatch = RegExp(r'^(\d{1,2})[:hH](\d{1,2})$').firstMatch(normalized);
-		if (hhmmMatch != null) {
-			final hours = int.tryParse(hhmmMatch.group(1)!);
-			final minutes = int.tryParse(hhmmMatch.group(2)!);
-			if (hours != null && minutes != null) {
-				return ((hours * 60) + minutes).toDouble();
-			}
-		}
-		return double.tryParse(normalized);
-	}
-
-	double _quantizeMinutes(double minutes) {
-		if (minutes <= 0) return 0;
-		if (minutes <= 15) return 15;
-		if (minutes <= 30) return 30;
-		if (minutes <= 60) return 60;
-		return 15 * ((minutes / 15).ceilToDouble());
-	}
-
-	double _quantityForMission(Map<String, dynamic> mission) {
-		final raw = mission['quantity'] ?? mission['qty'];
-		if (raw != null) {
-			final parsed = double.tryParse(raw.toString());
-			if (parsed != null && parsed > 0) return parsed;
-		}
-		final minutes = _extractDurationMinutes(mission);
-		if (minutes != null && minutes > 0) {
-			final quantizedMinutes = _quantizeMinutes(minutes);
-			return quantizedMinutes / 60;
-		}
-		return 1;
-	}
-
-	double _unitPriceForMission(Map<String, dynamic> mission) {
-		final productPrice = _parseAmount(mission['produit_price']);
-		if (productPrice > 0) return productPrice;
-		final total = _parseAmount(mission['montant_mission']);
-		final qty = _quantityForMission(mission);
-		if (total > 0 && qty > 0) {
-			return total / qty;
-		}
-		return 0;
-	}
-
-	double _lineTotalFor(Map<String, dynamic> mission) {
-		final total = _parseAmount(mission['montant_mission']);
-		if (total > 0) return total;
-		final unit = _unitPriceForMission(mission);
-		final qty = _quantityForMission(mission);
-		return unit * qty;
-	}
-
-	double get _totalHt => _missions.fold(0, (sum, m) => sum + _lineTotalFor(m));
+	// Invoices table state
+	List<ClientInvoiceSummary> _invoices = [];
+	bool _loadingInvoices = false;
+	int _invoicePage = 1;
+	final int _invoicePageSize = 25;
+	int _invoiceTotal = 0;
+	String _invoiceClientFilter = '';
+	String? _invoiceError;
+	final ScrollController _invoiceScrollController = ScrollController();
 
 	@override
 	void initState() {
@@ -142,7 +96,6 @@ class _BillingPageState extends State<BillingPage> {
 		_quantityFormat = NumberFormat('#,##0.##', 'fr_FR');
 		_availableMonths = _buildAvailableMonths();
 		_selectedMonth = _availableMonths.first;
-		_loadClients();
 		_loadCompanyInfo();
 	}
 
@@ -157,7 +110,7 @@ class _BillingPageState extends State<BillingPage> {
 				_allClientMissions = args.missions.map((mission) => Map<String, dynamic>.from(mission)).toList();
 				final inferredClient = (_allClientMissions.first['client_name'] ?? '').toString().trim();
 				if (inferredClient.isNotEmpty) {
-					_setClientInput(inferredClient);
+					_clientInput = inferredClient;
 				}
 				_applyMonthFilter();
 			});
@@ -166,12 +119,16 @@ class _BillingPageState extends State<BillingPage> {
 
 	@override
 	void dispose() {
-		_clientFieldCtrl?.dispose();
-		_clientFocusNode?.dispose();
 		_tableVerticalController.dispose();
 		_tableHorizontalController.dispose();
 		_fullscreenVerticalController.dispose();
 		_fullscreenHorizontalController.dispose();
+		_invoiceScrollController.dispose();
+		_lineDesignationCtrl?.dispose();
+		_lineQuantityCtrl?.dispose();
+		_lineUnitPriceCtrl?.dispose();
+		_lineNotesCtrl?.dispose();
+		_draftSaveTimer?.cancel();
 		super.dispose();
 	}
 
@@ -183,36 +140,181 @@ class _BillingPageState extends State<BillingPage> {
 				top: true,
 				bottom: false,
 				child: Stack(
-					fit: StackFit.expand,
 					children: [
-						ResponsiveContainer(
-							maxWidth: double.infinity,
-							padding: EdgeInsets.zero,
-							child: Padding(
-								padding: EdgeInsets.fromLTRB(spacing, 0, spacing, spacing),
-								child: Column(
-									crossAxisAlignment: CrossAxisAlignment.start,
-									children: [
-										_buildClientSection(),
-										const SizedBox(height: 4),
-										Expanded(
-											child: _loadingMissions
-												? const Center(child: CircularProgressIndicator())
-												: _missions.isEmpty
-													? _buildEmptyState()
-													: _buildInvoiceCard(spacing),
-										),
-									],
-								),
-							),
+						Row(
+							crossAxisAlignment: CrossAxisAlignment.stretch,
+							children: [
+								_buildSidebar(context),
+								Expanded(child: _buildActiveView(spacing)),
+							],
 						),
-						if (_isTableFullscreen) _buildFullscreenOverlay(spacing),
+						if (_activeSection == BillingSection.creation && _showLinePanel && _selectedLineIndex != null)
+							_buildLineEditorPanel(spacing),
+						if (_activeSection == BillingSection.creation && _isTableFullscreen)
+							_buildFullscreenOverlay(spacing),
 					],
 				),
 			),
 			bottomNavigationBar: const Padding(
 				padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
 				child: BrandFooter(),
+			),
+		);
+	}
+
+	Widget _buildSidebar(BuildContext context) {
+		const collapsedWidth = 68.0;
+		const expandedWidth = 240.0;
+		final collapsed = _sidebarCollapsed;
+		final horizontalPadding = collapsed ? 8.0 : 16.0;
+		return AnimatedContainer(
+			duration: const Duration(milliseconds: 220),
+			curve: Curves.easeInOut,
+			width: collapsed ? collapsedWidth : expandedWidth,
+			decoration: const BoxDecoration(
+				color: Color(0xFFF9FAFB),
+				border: Border(right: BorderSide(color: Color(0xFFE5E7EB))),
+			),
+			child: Column(
+				children: [
+					Padding(
+						padding: EdgeInsets.fromLTRB(horizontalPadding, 16, 8, 16),
+						child: Row(
+							children: [
+								if (!collapsed)
+									Expanded(
+										child: Column(
+											crossAxisAlignment: CrossAxisAlignment.start,
+											children: const [
+												Text('Facturation', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+												SizedBox(height: 2),
+												Text('Navigation générale', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+											],
+										),
+									),
+								IconButton(
+									icon: Icon(collapsed ? Icons.chevron_right : Icons.chevron_left),
+									onPressed: () => setState(() => _sidebarCollapsed = !collapsed),
+									tooltip: collapsed ? 'Déplier le menu' : 'Réduire le menu',
+								),
+							],
+						),
+					),
+					const Divider(height: 1, color: Color(0xFFE5E7EB)),
+					Expanded(
+						child: ListView(
+							padding: const EdgeInsets.symmetric(vertical: 8),
+							children: [
+								_SidebarEntry(
+									icon: Icons.description_outlined,
+									label: 'Préparation',
+									selected: _activeSection == BillingSection.creation,
+									onTap: () => setState(() => _activeSection = BillingSection.creation),
+									collapsed: collapsed,
+								),
+								_SidebarEntry(
+									icon: Icons.receipt_long_outlined,
+									label: 'Factures',
+									selected: _activeSection == BillingSection.invoices,
+									onTap: () => setState(() => _activeSection = BillingSection.invoices),
+									collapsed: collapsed,
+								),
+							],
+						),
+					),
+					const Divider(height: 1, color: Color(0xFFE5E7EB)),
+					Padding(
+						padding: EdgeInsets.fromLTRB(horizontalPadding, 12, horizontalPadding, 16),
+						child: Column(
+							crossAxisAlignment: collapsed ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+							children: [
+								if (!collapsed) ...[
+									const Text('Détail des lignes de facturation', style: TextStyle(fontWeight: FontWeight.w600)),
+									const SizedBox(height: 4),
+								],
+								Text('${_lineEditors.length} ligne(s)', style: const TextStyle(fontWeight: FontWeight.w700)),
+								const SizedBox(height: 8),
+								if (collapsed)
+									IconButton(
+										icon: Icon(_isTableFullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
+										onPressed: _lineEditors.isEmpty ? null : () => _toggleTableFullscreen(!_isTableFullscreen),
+										tooltip: _isTableFullscreen ? 'Quitter le plein écran' : 'Afficher en plein écran',
+									)
+								else
+									OutlinedButton.icon(
+										onPressed: _lineEditors.isEmpty ? null : () => _toggleTableFullscreen(!_isTableFullscreen),
+										icon: Icon(_isTableFullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
+										label: Text(_isTableFullscreen ? 'Quitter le plein écran' : 'Voir en plein écran'),
+									),
+							],
+						),
+					),
+				],
+			),
+		);
+	}
+
+	Widget _buildActiveView(double spacing) {
+		switch (_activeSection) {
+			case BillingSection.creation:
+				return _buildCreationView(spacing);
+			case BillingSection.invoices:
+				return _buildInvoicesView(spacing);
+		}
+	}
+
+	Widget _buildCreationView(double spacing) {
+		return Container(
+			color: const Color(0xFFF6F6F6),
+			child: ResponsiveContainer(
+				maxWidth: double.infinity,
+				padding: EdgeInsets.zero,
+				child: Padding(
+					padding: EdgeInsets.fromLTRB(spacing, 0, spacing, spacing),
+					child: Column(
+						crossAxisAlignment: CrossAxisAlignment.start,
+						children: [
+							_buildClientSection(),
+							const SizedBox(height: 4),
+							Expanded(
+								child: _loadingMissions
+									? const Center(child: CircularProgressIndicator())
+									: _lineEditors.isEmpty
+										? _buildEmptyState()
+										: Stack(
+											children: [
+												_buildInvoiceCard(spacing),
+												if (_savingDraft)
+													const Positioned(
+														right: 16,
+														top: 16,
+														child: _SavingDraftBadge(),
+													),
+											],
+									),
+							),
+						],
+					),
+				),
+			),
+		);
+	}
+
+	Widget _buildInvoicesView(double spacing) {
+		return Container(
+			color: const Color(0xFFF6F6F6),
+			child: ResponsiveContainer(
+				padding: EdgeInsets.all(spacing),
+				child: Column(
+					crossAxisAlignment: CrossAxisAlignment.start,
+					children: [
+						Text('Tableau des factures', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+						const SizedBox(height: 12),
+						_buildInvoiceFilters(),
+						const SizedBox(height: 16),
+						Expanded(child: _buildInvoiceTable()),
+					],
+				),
 			),
 		);
 	}
@@ -224,10 +326,10 @@ class _BillingPageState extends State<BillingPage> {
 				LayoutBuilder(
 					builder: (context, constraints) {
 						final isCompact = constraints.maxWidth < 960;
-						final fieldWidth = isCompact ? constraints.maxWidth : 280.0;
+						final fieldWidth = isCompact ? constraints.maxWidth : 300.0;
 						final monthWidth = isCompact ? constraints.maxWidth : 220.0;
-						final buttonsWidth = isCompact ? constraints.maxWidth : 240.0;
-						final statWidth = isCompact ? constraints.maxWidth : 150.0;
+						final buttonsWidth = isCompact ? constraints.maxWidth : 260.0;
+						final statWidth = isCompact ? constraints.maxWidth : 170.0;
 						return Wrap(
 							spacing: 16,
 							runSpacing: 6,
@@ -236,81 +338,21 @@ class _BillingPageState extends State<BillingPage> {
 								_buildToolbarField(
 									label: 'Client',
 									width: fieldWidth,
-									child: RawAutocomplete<String>(
-										key: _clientAutocompleteKey,
-										textEditingController: _ensureClientController(),
-										focusNode: _ensureClientFocusNode(),
-										displayStringForOption: (option) => option,
-										optionsBuilder: (TextEditingValue value) {
-											if (_clientOptions.isEmpty) return const Iterable<String>.empty();
-											final query = value.text.trim().toLowerCase();
-											if (query.isEmpty) return _clientOptions;
-											return _clientOptions.where((option) => option.toLowerCase().contains(query));
-										},
-										onSelected: (selected) => setState(() => _setClientInput(selected)),
-										fieldViewBuilder: (context, controller, focusNode, _) {
-											return TextField(
-												controller: controller,
-												focusNode: focusNode,
-												textInputAction: TextInputAction.search,
-												onChanged: (value) => _clientInput = value,
-												onSubmitted: (_) => _loadMissionsForClient(),
-												decoration: InputDecoration(
-													isDense: true,
-													prefixIcon: const Icon(Icons.business),
-													hintText: 'Sélectionner un client',
-													suffixIcon: Row(
-														mainAxisSize: MainAxisSize.min,
-														children: [
-															IconButton(
-																icon: const Icon(Icons.arrow_drop_down),
-																onPressed: _loadingClients ? null : _openClientOptions,
-																tooltip: 'Voir les clients',
-															),
-															IconButton(
-																icon: _loadingMissions
-																	? const SizedBox(
-																		width: 16,
-																		height: 16,
-																		child: CircularProgressIndicator(strokeWidth: 2),
-																	)
-																: const Icon(Icons.search),
-																onPressed: _loadingMissions ? null : _loadMissionsForClient,
-																tooltip: 'Charger les missions',
-															),
-														],
-													),
-												),
-											);
-										},
-										optionsViewBuilder: (context, onSelected, options) {
-											final list = options.take(30).toList();
-											if (list.isEmpty) {
-												return const SizedBox.shrink();
-											}
-											return Align(
-												alignment: Alignment.topLeft,
-												child: Material(
-													elevation: 6,
-													borderRadius: BorderRadius.circular(8),
-													child: ConstrainedBox(
-														constraints: const BoxConstraints(maxHeight: 300, minWidth: 280),
-														child: ListView.separated(
-															padding: EdgeInsets.zero,
-															itemCount: list.length,
-															separatorBuilder: (context, _) => const Divider(height: 1),
-															itemBuilder: (context, index) {
-																final option = list[index];
-																return ListTile(
-																	title: Text(option),
-																	onTap: () => onSelected(option),
-																);
-															},
-														),
-													),
-												),
-											);
-										},
+									child: ClientAutocompleteField(
+										value: _clientInput,
+										hintText: 'Sélectionner un client',
+										onChanged: (value) => setState(() => _clientInput = value),
+										onSelected: (_) => _loadMissionsForClient(),
+										onSubmitted: (_) => _loadMissionsForClient(),
+										trailingBuilder: (context, controller, loading) => [
+											IconButton(
+												icon: _loadingMissions
+													? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+													: const Icon(Icons.search),
+												onPressed: _loadingMissions ? null : _loadMissionsForClient,
+												tooltip: 'Charger les missions',
+											),
+										],
 									),
 								),
 								_buildToolbarField(
@@ -318,68 +360,33 @@ class _BillingPageState extends State<BillingPage> {
 									width: monthWidth,
 									child: DropdownButtonFormField<DateTime>(
 										initialValue: _selectedMonth,
-										decoration: const InputDecoration(
-											isDense: true,
-											prefixIcon: Icon(Icons.calendar_month),
-										),
+										decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.calendar_month)),
 										items: _availableMonths
-											.map(
-												(month) => DropdownMenuItem<DateTime>(
-													value: month,
-													child: Text(_monthLabel(month)),
-												),
-											)
+											.map((month) => DropdownMenuItem(value: month, child: Text(_monthLabel(month))))
 											.toList(),
 										onChanged: (value) {
 											if (value == null) return;
-											setState(() {
-												_selectedMonth = value;
-												_applyMonthFilter();
-											});
+											setState(() => _selectedMonth = value);
+											_applyMonthFilter();
 										},
 									),
 								),
 								_buildToolbarButtons(width: buttonsWidth),
-								SizedBox(
-									width: statWidth,
-									child: _buildToolbarStat('Missions sélectionnées', _missions.length.toString()),
-								),
-								SizedBox(
-									width: statWidth,
-									child: _buildToolbarStat('Total HT', _formatCurrency(_totalHt)),
-								),
+								SizedBox(width: statWidth, child: _buildToolbarStat('Lignes sélectionnées', _lineEditors.length.toString())),
+								SizedBox(width: statWidth, child: _buildToolbarStat('Total HT', _formatCurrency(_currentTotalHt))),
 							],
 						);
 					},
 				),
-				if (_loadingClients)
+				if (_loadingDraft)
 					const Padding(
 						padding: EdgeInsets.only(top: 8),
 						child: LinearProgressIndicator(minHeight: 2),
-					)
-				else if (_clientsError != null)
-					Padding(
-						padding: const EdgeInsets.only(top: 8),
-						child: Text(
-							_clientsError!,
-							style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
-						),
-					)
-				else if (_clientOptions.isNotEmpty)
-					Padding(
-						padding: const EdgeInsets.only(top: 8),
-						child: Text(
-							'${_clientOptions.length} client(s) disponibles',
-							style: const TextStyle(color: Color(0xFF4B5563), fontSize: 12),
-						),
 					),
 				if (_loadError != null)
 					Padding(
 						padding: const EdgeInsets.only(top: 8),
-						child: Text(
-							_loadError!,
-							style: const TextStyle(color: Color(0xFFB91C1C)),
-						),
+						child: Text(_loadError!, style: const TextStyle(color: Color(0xFFB91C1C))),
 					),
 			],
 		);
@@ -398,25 +405,6 @@ class _BillingPageState extends State<BillingPage> {
 		return SizedBox(width: width, child: content);
 	}
 
-	Widget _buildToolbarStat(String label, String value) {
-		return Container(
-			padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-			decoration: BoxDecoration(
-				color: const Color(0xFFF9FAFB),
-				borderRadius: BorderRadius.circular(8),
-				border: Border.all(color: const Color(0xFFE5E7EB)),
-			),
-			child: Column(
-				crossAxisAlignment: CrossAxisAlignment.start,
-				children: [
-					Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
-					const SizedBox(height: 2),
-					Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
-				],
-			),
-		);
-	}
-
 	Widget _buildToolbarButtons({double? width}) {
 		final buttons = Wrap(
 			spacing: 10,
@@ -426,24 +414,21 @@ class _BillingPageState extends State<BillingPage> {
 				ElevatedButton.icon(
 					onPressed: _loadingMissions ? null : _loadMissionsForClient,
 					icon: _loadingMissions
-						? const SizedBox(
-							width: 16,
-							height: 16,
-							child: CircularProgressIndicator(strokeWidth: 2),
-						)
+						? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
 						: const Icon(Icons.sync),
 					label: Text(_loadingMissions ? 'Chargement...' : 'Charger les missions'),
 				),
 				FilledButton.icon(
-					onPressed: (_missions.isEmpty || _generatingPdf) ? null : _generatePdfFromTable,
+					onPressed: (_lineEditors.isEmpty || _generatingPdf) ? null : _generatePdfFromTable,
 					icon: _generatingPdf
-						? const SizedBox(
-							width: 16,
-							height: 16,
-							child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-						)
+						? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
 						: const Icon(Icons.picture_as_pdf_outlined),
 					label: Text(_generatingPdf ? 'Préparation...' : 'Générer facture en PDF'),
+				),
+				OutlinedButton.icon(
+					onPressed: _lineEditors.isEmpty ? null : _resetAllLines,
+					icon: const Icon(Icons.restore),
+					label: const Text('Réinitialiser tout'),
 				),
 			],
 		);
@@ -451,126 +436,90 @@ class _BillingPageState extends State<BillingPage> {
 		return SizedBox(width: width, child: buttons);
 	}
 
-	Widget _buildFullscreenOverlay(double spacing) {
-		return Positioned.fill(
-			child: Material(
-				color: Colors.black.withValues(alpha: 0.55),
-				child: SafeArea(
-					child: Padding(
-						padding: EdgeInsets.all(spacing),
-						child: Column(
-							children: [
-								Align(
-									alignment: Alignment.centerRight,
-									child: FilledButton.icon(
-										onPressed: () => _toggleTableFullscreen(false),
-										icon: const Icon(Icons.close_fullscreen),
-										label: const Text('Quitter le plein écran'),
-									),
-								),
-								const SizedBox(height: 12),
-								Expanded(child: _buildInvoiceCard(spacing, fullscreen: true)),
-							],
-						),
-					),
-				),
+	Widget _buildToolbarStat(String label, String value) {
+		return Container(
+			padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+			decoration: BoxDecoration(
+				color: Colors.white,
+				borderRadius: BorderRadius.circular(8),
+				border: Border.all(color: const Color(0xFFE5E7EB)),
+			),
+			child: Column(
+				crossAxisAlignment: CrossAxisAlignment.start,
+				children: [
+					Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
+					const SizedBox(height: 2),
+					Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+				],
 			),
 		);
 	}
 
-	Widget _buildInvoiceCard(double spacing, {bool fullscreen = false}) {
-		final borderRadius = fullscreen ? 10.0 : 6.0;
-		final verticalController = fullscreen ? _fullscreenVerticalController : _tableVerticalController;
-		final horizontalController = fullscreen ? _fullscreenHorizontalController : _tableHorizontalController;
+	Widget _buildInvoiceCard(double spacing) {
+		const borderRadius = 10.0;
+		const borderColor = Color(0xFFE5E7EB);
 		return Card(
-			elevation: fullscreen ? 4 : 0,
+			elevation: 0,
 			margin: EdgeInsets.zero,
 			shape: RoundedRectangleBorder(
 				borderRadius: BorderRadius.circular(borderRadius),
-				side: BorderSide(color: fullscreen ? Colors.transparent : const Color(0xFFE5E7EB)),
+				side: const BorderSide(color: borderColor),
 			),
 			child: Column(
 				crossAxisAlignment: CrossAxisAlignment.stretch,
 				children: [
 					Container(
 						padding: EdgeInsets.symmetric(horizontal: spacing, vertical: spacing / 1.5),
-						decoration: BoxDecoration(
+						decoration: const BoxDecoration(
 							color: Colors.white,
 							borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
 						),
 						child: Row(
+							crossAxisAlignment: CrossAxisAlignment.start,
 							children: [
 								const Icon(Icons.table_rows, color: Color(0xFF000091)),
-								const SizedBox(width: 8),
-								const Text(
-									'Détail des lignes de facturation',
-									style: TextStyle(fontWeight: FontWeight.w700),
+								const SizedBox(width: 12),
+								Expanded(
+									child: Column(
+										crossAxisAlignment: CrossAxisAlignment.start,
+										children: [
+											const Text('Tableau des lignes', style: TextStyle(fontWeight: FontWeight.w700)),
+											const SizedBox(height: 2),
+											Text(
+												_lineEditors.isEmpty ? 'Aucune ligne sélectionnée' : '${_lineEditors.length} ligne(s) prêtes',
+												style: const TextStyle(color: Color(0xFF6B7280)),
+											),
+										],
+									),
 								),
-								const Spacer(),
-								Text('${_missions.length} ligne(s)'),
 								IconButton(
-									icon: Icon(fullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
-									onPressed: () => _toggleTableFullscreen(!fullscreen),
-									tooltip: fullscreen ? 'Quitter le plein écran' : 'Afficher en plein écran',
+									icon: Icon(_isTableFullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
+									onPressed: _lineEditors.isEmpty ? null : () => _toggleTableFullscreen(!_isTableFullscreen),
+									tooltip: _isTableFullscreen ? 'Quitter le plein écran' : 'Afficher en plein écran',
 								),
 							],
 						),
 					),
-					const Divider(height: 1, color: Color(0xFFE5E7EB)),
+					const Divider(height: 1, color: borderColor),
 					Expanded(
-						child: LayoutBuilder(
-							builder: (context, constraints) {
-								final viewportWidth = constraints.hasBoundedWidth ? constraints.maxWidth : MediaQuery.of(context).size.width;
-								final tableWidth = math.max(viewportWidth, 960.0);
-								const fractions = <double>[0.14, 0.34, 0.1, 0.14, 0.1, 0.18];
-								final List<double> columnWidths =
-									fractions.map((ratio) => tableWidth * ratio).toList();
-								return Scrollbar(
-									controller: verticalController,
-									thumbVisibility: true,
-									child: SingleChildScrollView(
-										controller: verticalController,
-										scrollDirection: Axis.vertical,
-										child: SingleChildScrollView(
-											controller: horizontalController,
-											scrollDirection: Axis.horizontal,
-											child: ConstrainedBox(
-												constraints: BoxConstraints(minWidth: tableWidth),
-												child: DataTable(
-													columnSpacing: 12,
-													headingRowHeight: 42,
-													dataRowMinHeight: 60,
-													dataRowMaxHeight: 140,
-													columns: [
-														DataColumn(label: SizedBox(width: columnWidths[0], child: const Text('Ref. mission'))),
-														DataColumn(label: SizedBox(width: columnWidths[1], child: const Text('Désignation'))),
-														DataColumn(label: SizedBox(width: columnWidths[2], child: const Text('TVA'))),
-														DataColumn(label: SizedBox(width: columnWidths[3], child: const Text('P.U. HT'))),
-														DataColumn(label: SizedBox(width: columnWidths[4], child: const Text('Qté'))),
-														DataColumn(label: SizedBox(width: columnWidths[5], child: const Text('Total HT'))),
-													],
-													rows: _missions.map((mission) => _buildRow(mission, columnWidths)).toList(),
-												),
-											),
-										),
-									),
-								);
-							},
+						child: _buildLinesTable(
+							verticalController: _tableVerticalController,
+							horizontalController: _tableHorizontalController,
 						),
 					),
-					const Divider(height: 1, color: Color(0xFFE5E7EB)),
+					const Divider(height: 1, color: borderColor),
 					Padding(
 						padding: EdgeInsets.symmetric(horizontal: spacing, vertical: spacing / 1.5),
-						child: Align(
-							alignment: Alignment.centerRight,
-							child: Text(
-								'Total HT: ${_formatCurrency(_totalHt)}',
-								style: const TextStyle(
-									fontWeight: FontWeight.w700,
-									color: Color(0xFF000091),
-									fontSize: 16,
+						child: Row(
+							children: [
+								if (_lineEditors.isNotEmpty)
+									Text('${_lineEditors.length} ligne(s)', style: const TextStyle(color: Color(0xFF6B7280))),
+								if (_lineEditors.isNotEmpty) const Spacer(),
+								Text(
+									'Total HT : ${_formatCurrency(_currentTotalHt)}',
+									style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF000091), fontSize: 16),
 								),
-							),
+							],
 						),
 					),
 				],
@@ -578,45 +527,35 @@ class _BillingPageState extends State<BillingPage> {
 		);
 	}
 
-	DataRow _buildRow(Map<String, dynamic> mission, List<double> columnWidths) {
-		final ref = (mission['reference_devis'] ?? '').toString();
-		final designation = _designationFor(mission);
-		final tva = _formatTva(mission);
-		final unitPrice = _unitPriceForMission(mission);
-		final qty = _quantityForMission(mission);
-		final lineTotal = _lineTotalFor(mission);
+	DataRow _buildRow(int index, _EditableInvoiceLine editor, List<double> columnWidths) {
+		final line = editor.currentLine;
+		final ref = editor.missionRef ?? line.missionRef ?? '-';
 		return DataRow(
+			selected: _selectedLineIndex == index,
+			onSelectChanged: (_) => _openLineEditor(index),
 			cells: [
 				_buildSelectableCell(ref.isEmpty ? '-' : ref, width: columnWidths[0]),
-				_buildDesignationCell(mission, designation, columnWidths[1]),
-				_buildSelectableCell(tva, width: columnWidths[2], align: TextAlign.center),
-				_buildSelectableCell(_formatCurrency(unitPrice), width: columnWidths[3], align: TextAlign.right),
-				_buildSelectableCell(_formatQuantity(qty), width: columnWidths[4], align: TextAlign.right),
-				_buildSelectableCell(_formatCurrency(lineTotal), width: columnWidths[5], align: TextAlign.right),
+				_buildDesignationCell(editor, columnWidths[1]),
+				_buildSelectableCell(_formatTvaValue(line.tvaRate), width: columnWidths[2], align: TextAlign.center),
+				_buildSelectableCell(_formatCurrency(line.unitPrice), width: columnWidths[3], align: TextAlign.right),
+				_buildSelectableCell(_formatQuantity(line.quantity), width: columnWidths[4], align: TextAlign.right),
+				_buildSelectableCell(_formatCurrency(line.totalHt), width: columnWidths[5], align: TextAlign.right),
 			],
 		);
 	}
 
-	DataCell _buildDesignationCell(Map<String, dynamic> mission, String fallback, double width) {
-		final lines = _designationLinesForUi(mission);
-		final content = lines.isEmpty ? fallback : lines.join('\n');
+	DataCell _buildDesignationCell(_EditableInvoiceLine editor, double width) {
+		final designation = editor.currentLine.designation.trim().isEmpty ? '---' : editor.currentLine.designation;
 		return DataCell(
 			SizedBox(
 				width: width,
-				child: SelectableText(
-					content,
-					style: const TextStyle(height: 1.35),
-				),
+				child: SelectableText(designation, style: const TextStyle(height: 1.35)),
 			),
 		);
 	}
 
 	DataCell _buildSelectableCell(String value, {double? width, TextAlign align = TextAlign.left}) {
-		final widget = SelectableText(
-			value,
-			textAlign: align,
-			style: const TextStyle(height: 1.2),
-		);
+		final widget = SelectableText(value, textAlign: align, style: const TextStyle(height: 1.2));
 		if (width != null) {
 			return DataCell(SizedBox(width: width, child: widget));
 		}
@@ -641,14 +580,457 @@ class _BillingPageState extends State<BillingPage> {
 		);
 	}
 
+	Widget _buildInvoiceFilters() {
+		return Card(
+			shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: const BorderSide(color: Color(0xFFE5E7EB))),
+			child: Padding(
+				padding: const EdgeInsets.all(16),
+				child: Wrap(
+					spacing: 16,
+					runSpacing: 12,
+					crossAxisAlignment: WrapCrossAlignment.center,
+					children: [
+						SizedBox(
+							width: 320,
+							child: ClientAutocompleteField(
+								value: _invoiceClientFilter,
+								hintText: 'Filtrer par client',
+								onChanged: (value) => setState(() => _invoiceClientFilter = value),
+								onSelected: (_) => _loadInvoices(reset: true),
+								onSubmitted: (_) => _loadInvoices(reset: true),
+							),
+						),
+						FilledButton.icon(
+							onPressed: _loadingInvoices ? null : () => _loadInvoices(reset: true),
+							icon: _loadingInvoices
+								? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+								: const Icon(Icons.search),
+							label: Text(_loadingInvoices ? 'Recherche...' : 'Mettre à jour'),
+						),
+					],
+				),
+			),
+		);
+	}
+
+	Widget _buildInvoiceTable() {
+		if (_invoiceError != null) {
+			return Center(child: Text(_invoiceError!, style: const TextStyle(color: Color(0xFFB91C1C))));
+		}
+		if (_loadingInvoices) {
+			return const Center(child: CircularProgressIndicator());
+		}
+		if (_invoices.isEmpty) {
+			return const Center(child: Text('Aucune facture trouvée. Modifiez les filtres pour relancer la recherche.'));
+		}
+		final totalPages = (_invoiceTotal / _invoicePageSize).ceil().clamp(1, 9999);
+		return Column(
+			children: [
+				Expanded(
+					child: Scrollbar(
+						controller: _invoiceScrollController,
+						thumbVisibility: true,
+						child: SingleChildScrollView(
+							controller: _invoiceScrollController,
+							scrollDirection: Axis.vertical,
+							child: DataTable(
+								columnSpacing: 12,
+								headingRowHeight: 40,
+								columns: const [
+									DataColumn(label: Text('Facture')),
+									DataColumn(label: Text('Client')),
+									DataColumn(label: Text('Statut')),
+									DataColumn(label: Text('Montant HT'), numeric: true),
+									DataColumn(label: Text('Date')), 
+								],
+								rows: _invoices
+									.map(
+										(invoice) => DataRow(
+											cells: [
+												DataCell(Text(invoice.invoiceNumber)),
+												DataCell(Text(invoice.clientName.isEmpty ? '-' : invoice.clientName)),
+												DataCell(Text(invoice.statusLabel.isEmpty ? invoice.statusCode : invoice.statusLabel)),
+												DataCell(Text(_formatCurrency(invoice.invoiceTotalHt > 0 ? invoice.invoiceTotalHt : invoice.amountHt))),
+												DataCell(Text(invoice.billedAt != null ? DateFormat('dd/MM/yyyy').format(invoice.billedAt!) : '-')),
+											],
+										),
+								)
+								.toList(),
+							),
+						),
+					),
+				),
+				const SizedBox(height: 8),
+				Row(
+					children: [
+						Text('Page $_invoicePage / $totalPages ($_invoiceTotal facture${_invoiceTotal > 1 ? 's' : ''})'),
+						const Spacer(),
+						IconButton(
+							icon: const Icon(Icons.chevron_left),
+							onPressed: _invoicePage > 1 && !_loadingInvoices
+								? () {
+									setState(() => _invoicePage -= 1);
+									_loadInvoices();
+								}
+								: null,
+							tooltip: 'Page précédente',
+						),
+
+						IconButton(
+							icon: const Icon(Icons.chevron_right),
+							onPressed: _invoicePage < totalPages && !_loadingInvoices
+								? () {
+									setState(() => _invoicePage += 1);
+									_loadInvoices();
+								}
+								: null,
+							tooltip: 'Page suivante',
+						),
+					],
+				),
+			],
+		);
+	}
+
+	Widget _buildLinesTable({
+		required ScrollController verticalController,
+		required ScrollController horizontalController,
+		double minWidth = 960,
+	}) {
+		return LayoutBuilder(
+			builder: (context, constraints) {
+				final viewportWidth = constraints.hasBoundedWidth ? constraints.maxWidth : MediaQuery.of(context).size.width;
+				final tableWidth = math.max(viewportWidth, minWidth);
+				const fractions = <double>[0.14, 0.36, 0.1, 0.14, 0.1, 0.16];
+				final columnWidths = fractions.map((ratio) => tableWidth * ratio).toList();
+				return Scrollbar(
+					controller: verticalController,
+					thumbVisibility: true,
+					child: SingleChildScrollView(
+						controller: verticalController,
+						scrollDirection: Axis.vertical,
+						child: SingleChildScrollView(
+							controller: horizontalController,
+							scrollDirection: Axis.horizontal,
+							child: ConstrainedBox(
+								constraints: BoxConstraints(minWidth: tableWidth),
+								child: DataTable(
+									columnSpacing: 12,
+									headingRowHeight: 42,
+									dataRowMinHeight: 60,
+									dataRowMaxHeight: 140,
+									columns: [
+										DataColumn(label: SizedBox(width: columnWidths[0], child: const Text('Ref. mission'))),
+										DataColumn(label: SizedBox(width: columnWidths[1], child: const Text('Désignation'))),
+										DataColumn(label: SizedBox(width: columnWidths[2], child: const Text('TVA'))),
+										DataColumn(label: SizedBox(width: columnWidths[3], child: const Text('P.U. HT'))),
+										DataColumn(label: SizedBox(width: columnWidths[4], child: const Text('Qté'))),
+										DataColumn(label: SizedBox(width: columnWidths[5], child: const Text('Total HT'))),
+									],
+									rows: _lineEditors.asMap().entries.map((entry) => _buildRow(entry.key, entry.value, columnWidths)).toList(),
+								),
+							),
+						),
+					),
+				);
+			},
+		);
+	}
+
+	Widget _buildFullscreenOverlay(double spacing) {
+		return Positioned.fill(
+			child: Container(
+				color: Colors.black54,
+				child: SafeArea(
+					child: Padding(
+						padding: EdgeInsets.all(spacing),
+						child: Material(
+							elevation: 8,
+							borderRadius: BorderRadius.circular(12),
+							clipBehavior: Clip.antiAlias,
+							child: Container(
+								color: Colors.white,
+								child: Column(
+									crossAxisAlignment: CrossAxisAlignment.stretch,
+									children: [
+										Container(
+											padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+											child: Row(
+												children: [
+													const Icon(Icons.fullscreen, color: Color(0xFF000091)),
+													const SizedBox(width: 8),
+													const Text('Vue plein écran des lignes', style: TextStyle(fontWeight: FontWeight.w700)),
+													const Spacer(),
+													Text('${_lineEditors.length} ligne(s)'),
+													IconButton(onPressed: () => _toggleTableFullscreen(false), icon: const Icon(Icons.close)),
+												],
+											),
+										),
+										const Divider(height: 1, color: Color(0xFFE5E7EB)),
+										Expanded(
+											child: _buildLinesTable(
+												verticalController: _fullscreenVerticalController,
+												horizontalController: _fullscreenHorizontalController,
+												minWidth: 1200,
+											),
+										),
+										const Divider(height: 1, color: Color(0xFFE5E7EB)),
+										Padding(
+											padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+											child: Align(
+												alignment: Alignment.centerRight,
+												child: Text(
+													'Total HT: ${_formatCurrency(_currentTotalHt)}',
+													style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF000091)),
+												),
+											),
+										),
+									],
+								),
+							),
+						),
+					),
+				),
+			),
+		);
+	}
+
+	Widget _buildLineEditorPanel(double spacing) {
+		final index = _selectedLineIndex;
+		if (index == null || index < 0 || index >= _lineEditors.length) {
+			return const SizedBox.shrink();
+		}
+		final editor = _lineEditors[index];
+		final line = editor.currentLine;
+		return Align(
+			alignment: Alignment.centerRight,
+			child: ConstrainedBox(
+				constraints: const BoxConstraints(maxWidth: 420),
+				child: Material(
+					elevation: 8,
+					borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), bottomLeft: Radius.circular(12)),
+					child: Container(
+						padding: EdgeInsets.all(spacing),
+						color: Colors.white,
+						child: Column(
+							crossAxisAlignment: CrossAxisAlignment.start,
+							children: [
+								Row(
+									children: [
+										Expanded(
+											child: Text('Édition de la ligne', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+										),
+										IconButton(onPressed: _closeLineEditor, icon: const Icon(Icons.close)),
+									],
+								),
+								const SizedBox(height: 12),
+								TextFormField(
+									controller: _lineDesignationCtrl,
+									maxLines: 3,
+									decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
+									onChanged: (value) => _updateSelectedLine(designation: value),
+								),
+								const SizedBox(height: 12),
+								Row(
+									children: [
+										Expanded(
+											child: TextFormField(
+												controller: _lineQuantityCtrl,
+												keyboardType: const TextInputType.numberWithOptions(decimal: true),
+												decoration: const InputDecoration(labelText: 'Quantité', border: OutlineInputBorder()),
+												onChanged: (value) => _updateSelectedLine(quantity: double.tryParse(value.replaceAll(',', '.'))),
+											),
+										),
+										const SizedBox(width: 12),
+										Expanded(
+											child: TextFormField(
+												controller: _lineUnitPriceCtrl,
+												keyboardType: const TextInputType.numberWithOptions(decimal: true),
+												decoration: const InputDecoration(labelText: 'Prix unitaire HT', border: OutlineInputBorder()),
+												onChanged: (value) => _updateSelectedLine(unitPrice: double.tryParse(value.replaceAll(',', '.'))),
+											),
+										),
+									],
+								),
+								const SizedBox(height: 12),
+								DropdownButtonFormField<double>(
+									initialValue: _tvaOptionFor(line.tvaRate),
+									items: _tvaRates
+										.map((rate) => DropdownMenuItem(value: rate, child: Text('${rate.toStringAsFixed(rate == rate.roundToDouble() ? 0 : 2)} %')))
+										.toList(),
+									onChanged: (value) => _updateSelectedLine(tvaRate: value ?? 0),
+									decoration: const InputDecoration(labelText: 'TVA', border: OutlineInputBorder()),
+								),
+								const SizedBox(height: 12),
+								TextFormField(
+									controller: _lineNotesCtrl,
+									maxLines: 2,
+									decoration: const InputDecoration(labelText: 'Notes (optionnel)', border: OutlineInputBorder()),
+									onChanged: (value) => _updateSelectedLine(notes: value),
+								),
+								const SizedBox(height: 16),
+								Container(
+									padding: const EdgeInsets.all(12),
+									decoration: BoxDecoration(
+										color: const Color(0xFFF9FAFB),
+										borderRadius: BorderRadius.circular(8),
+										border: Border.all(color: const Color(0xFFE5E7EB)),
+									),
+									child: Column(
+										crossAxisAlignment: CrossAxisAlignment.start,
+										children: [
+											Text('Total HT de la ligne : ${_formatCurrency(line.totalHt)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+											if (editor.missionRef != null)
+												Text('Mission liée : ${editor.missionRef}', style: const TextStyle(color: Color(0xFF6B7280))),
+										],
+									),
+								),
+								const SizedBox(height: 16),
+								Row(
+									children: [
+										OutlinedButton.icon(onPressed: _resetSelectedLine, icon: const Icon(Icons.restore), label: const Text('Réinitialiser la ligne')),
+										const SizedBox(width: 12),
+										FilledButton.icon(onPressed: _lineEditors.length == 1 ? null : _resetAllLines, icon: const Icon(Icons.auto_fix_high), label: const Text('Réinitialiser tout')),
+									],
+								),
+							],
+						),
+					),
+				),
+			),
+		);
+	}
+
+	void _openLineEditor(int index) {
+		if (index < 0 || index >= _lineEditors.length) return;
+		setState(() {
+			_selectedLineIndex = index;
+			_showLinePanel = true;
+		});
+		_initLineControllers();
+	}
+
+	void _initLineControllers() {
+		final index = _selectedLineIndex;
+		if (index == null || index < 0 || index >= _lineEditors.length) return;
+		final line = _lineEditors[index].currentLine;
+		_lineDesignationCtrl?.dispose();
+		_lineQuantityCtrl?.dispose();
+		_lineUnitPriceCtrl?.dispose();
+		_lineNotesCtrl?.dispose();
+		_lineDesignationCtrl = TextEditingController(text: line.designation);
+		_lineQuantityCtrl = TextEditingController(text: _quantityFormat.format(line.quantity));
+		_lineUnitPriceCtrl = TextEditingController(text: line.unitPrice.toStringAsFixed(2));
+		_lineNotesCtrl = TextEditingController(text: line.notes ?? '');
+	}
+
+	void _closeLineEditor() {
+		setState(() {
+			_showLinePanel = false;
+			_selectedLineIndex = null;
+		});
+	}
+
+	void _resetSelectedLine() {
+		final index = _selectedLineIndex;
+		if (index == null || index < 0 || index >= _lineEditors.length) return;
+		setState(() {
+			_lineEditors[index].reset();
+		});
+		_initLineControllers();
+		_scheduleDraftSave();
+	}
+
+	void _resetAllLines() {
+		if (_lineEditors.isEmpty) return;
+		setState(() {
+			for (final editor in _lineEditors) {
+				editor.reset();
+			}
+		});
+		_initLineControllers();
+		_scheduleDraftSave();
+	}
+
+	void _updateSelectedLine({String? designation, double? quantity, double? unitPrice, double? tvaRate, String? notes}) {
+		final index = _selectedLineIndex;
+		if (index == null || index < 0 || index >= _lineEditors.length) return;
+		setState(() {
+			final line = _lineEditors[index].currentLine;
+			if (designation != null) {
+				line.designation = designation;
+			}
+			if (quantity != null && quantity > 0) {
+				line.quantity = quantity;
+			}
+			if (unitPrice != null && unitPrice >= 0) {
+				line.unitPrice = unitPrice;
+			}
+			if (tvaRate != null && tvaRate >= 0) {
+				line.tvaRate = tvaRate;
+			}
+			if (notes != null) {
+				line.notes = notes.isEmpty ? null : notes;
+			}
+		});
+		_scheduleDraftSave();
+	}
+
+	void _scheduleDraftSave() {
+		_draftSaveTimer?.cancel();
+		_draftSaveTimer = Timer(const Duration(milliseconds: 800), _persistDraftLines);
+	}
+
+	Future<void> _persistDraftLines() async {
+		if (!mounted || _lineEditors.isEmpty || _currentClientName.isEmpty) return;
+		setState(() => _savingDraft = true);
+		final period = DateTime(_selectedMonth.year, _selectedMonth.month);
+		try {
+			final key = await BillingService.saveInvoiceDraftLines(
+				clientName: _currentClientName,
+				periodMonth: period,
+				lines: _lineEditors.map((editor) => editor.currentLine).toList(),
+				userId: AuthManager.userId,
+				userName: AuthManager.userFullName,
+				draftKey: _draftKey,
+			);
+			if (!mounted) return;
+			setState(() => _draftKey = key);
+		} catch (error) {
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Impossible d\'enregistrer les modifications (${error.toString()})')));
+		} finally {
+			if (mounted) {
+				setState(() => _savingDraft = false);
+			}
+		}
+	}
+
+	Future<void> _loadDraftLines() async {
+		if (_currentClientName.isEmpty || _missions.isEmpty) return;
+		setState(() => _loadingDraft = true);
+		final period = DateTime(_selectedMonth.year, _selectedMonth.month);
+		final key = BillingService.buildDraftKey(_currentClientName, period);
+		try {
+			final drafts = await BillingService.fetchInvoiceDraftLines(clientName: _currentClientName, periodMonth: period, draftKey: key);
+			if (!mounted) return;
+			if (drafts.isNotEmpty) {
+				setState(() => _draftKey = key);
+				_rebuildInvoiceLines(draftLines: drafts);
+			}
+		} catch (error) {
+			debugPrint('Draft load error: $error');
+		} finally {
+			if (mounted) {
+				setState(() => _loadingDraft = false);
+			}
+		}
+	}
+
 	Future<void> _loadMissionsForClient() async {
 		final client = _currentClientName;
 		if (client.isEmpty) {
-			ScaffoldMessenger.of(context).showSnackBar(
-				const SnackBar(content: Text('Veuillez sélectionner un client dans la liste (ou taper pour filtrer).')),
-			);
-			_openClientOptions();
-			_clientFocusNode?.requestFocus();
+			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez sélectionner un client.')));
 			return;
 		}
 		setState(() {
@@ -669,9 +1051,7 @@ class _BillingPageState extends State<BillingPage> {
 				_loadingMissions = false;
 			});
 			if (filtered.isEmpty) {
-				ScaffoldMessenger.of(context).showSnackBar(
-					const SnackBar(content: Text('Aucune mission trouvée pour ce client sur les 12 derniers mois.')),
-				);
+				ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucune mission trouvée pour ce client sur les 12 derniers mois.')));
 			}
 		} catch (_) {
 			if (!mounted) return;
@@ -679,30 +1059,30 @@ class _BillingPageState extends State<BillingPage> {
 				_loadingMissions = false;
 				_allClientMissions = [];
 				_missions = [];
+				_lineEditors.clear();
 				_loadError = 'Impossible de récupérer les missions (connexion ou API).';
 			});
 		}
 	}
 
 	Future<void> _generatePdfFromTable() async {
-		if (_missions.isEmpty) {
-			ScaffoldMessenger.of(context).showSnackBar(
-				const SnackBar(content: Text('Chargez des missions avant de générer un PDF.')),
-			);
+		if (_lineEditors.isEmpty) {
+			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chargez des missions avant de générer un PDF.')));
 			return;
 		}
 		setState(() => _generatingPdf = true);
+		final lines = _lineEditors.map((editor) => editor.currentLine).toList();
 		try {
 			await _ensurePdfAssets();
 			final headers = ['Désignation', 'TVA', 'P.U. HT', 'Qté', 'Total HT'];
-			final rows = _missions
+			final rows = lines
 				.map(
-					(mission) => [
-						_designationFor(mission),
-						_formatTva(mission),
-						_formatCurrency(_unitPriceForMission(mission)),
-						_formatQuantity(_quantityForMission(mission)),
-						_formatCurrency(_lineTotalFor(mission)),
+					(line) => [
+						line.designation,
+						_formatTvaValue(line.tvaRate),
+						_formatCurrency(line.unitPrice),
+						_formatQuantity(line.quantity),
+						_formatCurrency(line.totalHt),
 					],
 				)
 				.toList();
@@ -717,11 +1097,7 @@ class _BillingPageState extends State<BillingPage> {
 			final companyLines = _companyInfoLinesForPdf(companyInfo);
 			final hasLogo = _pdfLogoImage != null;
 			final logoWidget = hasLogo
-				? pw.Container(
-					margin: const pw.EdgeInsets.only(bottom: 8),
-					height: 48,
-					child: pw.Image(_pdfLogoImage!, fit: pw.BoxFit.contain),
-				)
+				? pw.Container(margin: const pw.EdgeInsets.only(bottom: 8), height: 48, child: pw.Image(_pdfLogoImage!, fit: pw.BoxFit.contain))
 				: null;
 			final companyCard = (companyLines.isEmpty && !hasLogo)
 				? null
@@ -735,14 +1111,9 @@ class _BillingPageState extends State<BillingPage> {
 					child: pw.Column(
 						crossAxisAlignment: pw.CrossAxisAlignment.start,
 						children: [
-							pw.Text(
-								'Emetteur',
-								style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: accent),
-							),
+							pw.Text('Émetteur', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: accent)),
 							pw.SizedBox(height: 4),
-							...companyLines.map(
-								(line) => pw.Text(line, style: const pw.TextStyle(fontSize: 11)),
-							),
+							...companyLines.map((line) => pw.Text(line, style: const pw.TextStyle(fontSize: 11))),
 						],
 					),
 				);
@@ -756,25 +1127,15 @@ class _BillingPageState extends State<BillingPage> {
 				child: pw.Column(
 					crossAxisAlignment: pw.CrossAxisAlignment.start,
 					children: [
-						pw.Text(
-							'Destinataire',
-							style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#BE185D')),
-						),
+						pw.Text('Destinataire', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#BE185D'))),
 						pw.SizedBox(height: 4),
-						pw.Text(
-							clientLabel,
-							style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13),
-						),
+						pw.Text(clientLabel, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
 						if (clientAddressLines.isNotEmpty) ...[
 							pw.SizedBox(height: 2),
-							...clientAddressLines.map(
-								(line) => pw.Text(line, style: const pw.TextStyle(fontSize: 11)),
-							),
+							...clientAddressLines.map((line) => pw.Text(line, style: const pw.TextStyle(fontSize: 11))),
 						],
 						pw.SizedBox(height: clientAddressLines.isNotEmpty ? 6 : 2),
 						pw.Text('Période : ${_monthLabel(_selectedMonth)}', style: const pw.TextStyle(fontSize: 11)),
-						pw.Text('Lignes sélectionnées : ${_missions.length}', style: const pw.TextStyle(fontSize: 11)),
-						pw.Text('Total HT estimé : ${_formatCurrency(_totalHt)}', style: const pw.TextStyle(fontSize: 11)),
 					],
 				),
 			);
@@ -788,19 +1149,9 @@ class _BillingPageState extends State<BillingPage> {
 			headerColumns.add(pw.Expanded(flex: 3, child: clientCard));
 			final headerStack = <pw.Widget>[];
 			if (logoWidget != null) {
-				headerStack.add(
-					pw.Align(
-						alignment: pw.Alignment.centerLeft,
-						child: logoWidget,
-					),
-				);
+				headerStack.add(pw.Align(alignment: pw.Alignment.centerLeft, child: logoWidget));
 			}
-			headerStack.add(
-				pw.Row(
-					crossAxisAlignment: pw.CrossAxisAlignment.start,
-					children: headerColumns,
-				),
-			);
+			headerStack.add(pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: headerColumns));
 			doc.addPage(
 				pw.MultiPage(
 					pageFormat: PdfPageFormat.a4,
@@ -812,10 +1163,7 @@ class _BillingPageState extends State<BillingPage> {
 						pw.TableHelper.fromTextArray(
 							headers: headers,
 							data: rows,
-							border: pw.TableBorder.symmetric(
-								inside: pw.BorderSide(color: borderColor, width: 0.25),
-								outside: pw.BorderSide(color: borderColor, width: 0.5),
-							),
+							border: pw.TableBorder.symmetric(inside: pw.BorderSide(color: borderColor, width: 0.25), outside: pw.BorderSide(color: borderColor, width: 0.5)),
 							headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
 							headerDecoration: pw.BoxDecoration(color: accent),
 							cellStyle: const pw.TextStyle(fontSize: 10.5),
@@ -837,19 +1185,13 @@ class _BillingPageState extends State<BillingPage> {
 						pw.SizedBox(height: 12),
 						pw.Align(
 							alignment: pw.Alignment.centerRight,
-							child: pw.Text(
-								'Total HT : ${_formatCurrency(_totalHt)}',
-								style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: accent),
-							),
+							child: pw.Text('Total HT : ${_formatCurrency(_currentTotalHt)}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: accent)),
 						),
 						pw.SizedBox(height: 6),
-						pw.Text(
-							'Document généré le ${DateFormat('dd/MM/yyyy HH:mm').format(now)}',
-							style: pw.TextStyle(fontSize: 9, color: PdfColor.fromHex('#6B7280')),
-						),
+						pw.Text('Document généré le ${DateFormat('dd/MM/yyyy HH:mm').format(now)}', style: pw.TextStyle(fontSize: 9, color: PdfColor.fromHex('#6B7280'))),
 					],
-				),
-			);
+					),
+				);
 			final Uint8List bytes = await doc.save();
 			final filename = 'facture_${DateFormat('yyyyMMdd_HHmmss').format(now)}.pdf';
 			if (canSavePdfToDownloads) {
@@ -861,9 +1203,7 @@ class _BillingPageState extends State<BillingPage> {
 			debugPrint('PDF generation failed: $e');
 			debugPrint(stack.toString());
 			if (!mounted) return;
-			ScaffoldMessenger.of(context).showSnackBar(
-				const SnackBar(content: Text('Impossible de générer le PDF. Veuillez réessayer.')),
-			);
+			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Impossible de générer le PDF. Veuillez réessayer.')));
 		} finally {
 			if (mounted) {
 				setState(() => _generatingPdf = false);
@@ -884,65 +1224,72 @@ class _BillingPageState extends State<BillingPage> {
 		}
 	}
 
-	List<DateTime> _buildAvailableMonths({int monthsBack = 12}) {
-		final now = DateTime.now();
-		return List<DateTime>.generate(monthsBack, (index) {
-			final date = DateTime(now.year, now.month - index, 1);
-			return DateTime(date.year, date.month);
+	void _applyMonthFilter() {
+		final filtered = _allClientMissions.where((mission) {
+			final date = _missionDate(mission);
+			if (date == null) return false;
+			return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
+		}).toList();
+		filtered.sort((a, b) {
+			final dateA = _missionDate(a);
+			final dateB = _missionDate(b);
+			if (dateA == null && dateB == null) return 0;
+			if (dateA == null) return 1;
+			if (dateB == null) return -1;
+			return dateB.compareTo(dateA);
+		});
+		setState(() {
+			_missions = filtered;
+		});
+		_rebuildInvoiceLines();
+		_loadDraftLines();
+	}
+
+	void _rebuildInvoiceLines({List<InvoiceLine>? draftLines}) {
+		final missionByRef = <String, Map<String, dynamic>>{};
+		for (final mission in _missions) {
+			final ref = _missionRef(mission);
+			if (ref != null && ref.isNotEmpty) {
+				missionByRef[ref] = mission;
+			}
+		}
+		final newEditors = <_EditableInvoiceLine>[];
+		final consumedRefs = <String>{};
+		if (draftLines != null && draftLines.isNotEmpty) {
+			for (final draft in draftLines) {
+				final mission = draft.missionRef != null ? missionByRef[draft.missionRef!] : null;
+				final original = mission != null ? _invoiceLineFromMission(mission) : draft.copy();
+				newEditors.add(_EditableInvoiceLine(mission: mission, originalLine: original, currentLine: draft.copy()));
+				if (draft.missionRef != null) consumedRefs.add(draft.missionRef!);
+			}
+		}
+		for (final mission in _missions) {
+			final ref = _missionRef(mission);
+			if (ref != null && consumedRefs.contains(ref)) continue;
+			final line = _invoiceLineFromMission(mission);
+			newEditors.add(_EditableInvoiceLine(mission: mission, originalLine: line, currentLine: line.copy()));
+		}
+		setState(() {
+			_lineEditors
+				..clear()
+				..addAll(newEditors);
+			_selectedLineIndex = null;
+			_showLinePanel = false;
 		});
 	}
 
-	String _monthLabel(DateTime month) {
-		final index = (month.month - 1).clamp(0, _monthNames.length - 1);
-		return '${_monthNames[index]} ${month.year}';
-	}
-
-	TextEditingController _ensureClientController() {
-		_clientFieldCtrl ??= TextEditingController(text: _clientInput);
-		return _clientFieldCtrl!;
-	}
-
-	FocusNode _ensureClientFocusNode() {
-		_clientFocusNode ??= FocusNode();
-		return _clientFocusNode!;
-	}
-
-	void _setClientInput(String value) {
-		_clientInput = value;
-		final controller = _clientFieldCtrl;
-		if (controller != null && controller.text != value) {
-			controller.text = value;
-			controller.selection = TextSelection.collapsed(offset: controller.text.length);
-		}
-	}
-
-	String get _currentClientName => _clientInput.trim();
-
-	void _openClientOptions() {
-		if (_clientOptions.isEmpty && !_loadingClients) {
-			_loadClients();
-		}
-		final controller = _ensureClientController();
-		final focusNode = _ensureClientFocusNode();
-		if (!focusNode.hasFocus) {
-			focusNode.requestFocus();
-		}
-		controller.value = controller.value.copyWith(
-			text: controller.text,
-			selection: TextSelection.collapsed(offset: controller.text.length),
+	InvoiceLine _invoiceLineFromMission(Map<String, dynamic> mission) {
+		return InvoiceLine.fromMission(
+			mission,
+			unitPriceResolver: _unitPriceForMission,
+			lineTotalResolver: _lineTotalFor,
+			designationResolver: _designationFor,
 		);
-	}
-
-	void _toggleTableFullscreen(bool value) {
-		if (_isTableFullscreen == value) return;
-		setState(() => _isTableFullscreen = value);
 	}
 
 	Future<void> _loadCompanyInfo() async {
 		if (_loadingCompanyInfo) return;
-		setState(() {
-			_loadingCompanyInfo = true;
-		});
+		setState(() => _loadingCompanyInfo = true);
 		try {
 			final info = await CompanyInfoService.fetch();
 			if (!mounted) return;
@@ -961,54 +1308,245 @@ class _BillingPageState extends State<BillingPage> {
 		}
 	}
 
-	Future<void> _loadClients() async {
-		if (_loadingClients) return;
+	Future<void> _loadInvoices({bool reset = false}) async {
+		if (reset) {
+			_invoicePage = 1;
+		}
 		setState(() {
-			_loadingClients = true;
-			_clientsError = null;
+			_loadingInvoices = true;
+			_invoiceError = null;
 		});
 		try {
-			final clients = await ClientService.getClients(limit: 500);
+			final result = await BillingService.getClientInvoices(
+				page: _invoicePage,
+				pageSize: _invoicePageSize,
+				clientName: _invoiceClientFilter.isEmpty ? null : _invoiceClientFilter,
+			);
 			if (!mounted) return;
-			final seen = <String>{};
-			final deduped = <String>[];
-			for (final client in clients) {
-				final trimmed = client.trim();
-				if (trimmed.isEmpty) continue;
-				final key = trimmed.toLowerCase();
-				if (seen.add(key)) {
-					deduped.add(trimmed);
-				}
-			}
-			deduped.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 			setState(() {
-				_clientOptions = deduped;
-				_loadingClients = false;
+				_invoices = result.invoices;
+				_invoiceTotal = result.total;
+				_invoicePage = result.page;
+				_loadingInvoices = false;
 			});
-		} catch (_) {
+		} catch (error) {
 			if (!mounted) return;
 			setState(() {
-				_loadingClients = false;
-				_clientsError = 'Impossible de charger les clients.';
+				_loadingInvoices = false;
+				_invoiceError = error.toString();
 			});
 		}
 	}
 
-	void _applyMonthFilter() {
-		final filtered = _allClientMissions.where((mission) {
-			final date = _missionDate(mission);
-			if (date == null) return false;
-			return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
-		}).toList();
-		filtered.sort((a, b) {
-			final dateA = _missionDate(a);
-			final dateB = _missionDate(b);
-			if (dateA == null && dateB == null) return 0;
-			if (dateA == null) return 1;
-			if (dateB == null) return -1;
-			return dateB.compareTo(dateA);
+	void _toggleTableFullscreen(bool value) {
+		if (_isTableFullscreen == value) return;
+		setState(() {
+			_isTableFullscreen = value;
+			if (value) {
+				_showLinePanel = false;
+			}
 		});
-		_missions = filtered;
+	}
+
+	String get _currentClientName => _clientInput.trim();
+	double get _currentTotalHt => _lineEditors.fold(0, (sum, editor) => sum + editor.currentLine.totalHt);
+
+	List<DateTime> _buildAvailableMonths({int monthsBack = 12}) {
+		final now = DateTime.now();
+		return List<DateTime>.generate(monthsBack, (index) {
+			final date = DateTime(now.year, now.month - index, 1);
+			return DateTime(date.year, date.month);
+		});
+	}
+
+	String _monthLabel(DateTime month) {
+		const monthNames = [
+			'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+			'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+		];
+		final index = (month.month - 1).clamp(0, monthNames.length - 1);
+		return '${monthNames[index]} ${month.year}';
+	}
+
+	String _formatCurrency(double value) {
+		final formatted = _currencyFormat.format(value);
+		return formatted.replaceAll('\u00A0', ' ').replaceAll('\u202F', ' ');
+	}
+
+	String _formatQuantity(double value) {
+		final formatted = _quantityFormat.format(value);
+		return formatted.replaceAll('\u00A0', ' ').replaceAll('\u202F', ' ');
+	}
+
+	String _formatTvaValue(double value) {
+		if (value <= 0) return '0 %';
+		return '${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 2)} %';
+	}
+
+	double _unitPriceForMission(Map<String, dynamic> mission) {
+		final productPrice = _parseAmount(mission['produit_price']);
+		if (productPrice > 0) return productPrice;
+		final total = _parseAmount(mission['montant_mission']);
+		final qty = _quantityForMission(mission);
+		if (total > 0 && qty > 0) {
+			return total / qty;
+		}
+		return 0;
+	}
+
+	double _lineTotalFor(Map<String, dynamic> mission) {
+		final total = _parseAmount(mission['montant_mission']);
+		if (total > 0) return total;
+		final unit = _unitPriceForMission(mission);
+		final qty = _quantityForMission(mission);
+		return unit * qty;
+	}
+
+	double _quantityForMission(Map<String, dynamic> mission) {
+		final raw = mission['quantity'] ?? mission['qty'];
+		if (raw != null) {
+			final parsed = double.tryParse(raw.toString());
+			if (parsed != null && parsed > 0) return parsed;
+		}
+		final minutes = _extractDurationMinutes(mission);
+		if (minutes != null && minutes > 0) {
+			final quantizedMinutes = _quantizeMinutes(minutes);
+			return quantizedMinutes / 60;
+		}
+		return 1;
+	}
+
+	double _quantizeMinutes(double minutes) {
+		if (minutes <= 0) return 0;
+		if (minutes <= 15) return 15;
+		if (minutes <= 30) return 30;
+		if (minutes <= 60) return 60;
+		return 15 * ((minutes / 15).ceilToDouble());
+	}
+
+	List<String> _designationLines(Map<String, dynamic> mission) {
+		final lines = <String>[];
+		final produitLabel = mission['produit_label']?.toString().trim();
+		final produitRef = mission['produit_ref']?.toString().trim();
+		final title = (produitLabel != null && produitLabel.isNotEmpty)
+			? produitLabel
+			: ((produitRef != null && produitRef.isNotEmpty) ? produitRef : 'Mission');
+		lines.add(title);
+		final date = _missionDate(mission);
+		final dateLabel = date != null ? DateFormat('dd/MM/yyyy').format(date) : '-';
+		lines.add('Date : $dateLabel');
+		final timeRange = _timeRangeLabel(mission);
+		lines.add('Heure : ${timeRange.isNotEmpty ? timeRange : '-'}');
+		final duration = _formatMissionDuration(mission);
+		lines.add('Durée : ${duration.isNotEmpty ? duration : '-'}');
+		final requester = _missionRequester(mission);
+		lines.add('Demandeur : ${requester.isNotEmpty ? requester : '-'}');
+		return lines;
+	}
+
+	String _designationFor(Map<String, dynamic> mission) => _designationLines(mission).join('\n');
+
+	String _formatMissionDuration(Map<String, dynamic> mission) {
+		final raw = mission['dureemission'] ?? mission['duration'] ?? mission['duration_minutes'];
+		final parsed = _parseDurationMinutes(raw);
+		if (parsed == null || parsed <= 0) return '';
+		if (parsed % 60 == 0) {
+			return '${(parsed / 60).round()}h';
+		}
+		return '${parsed.round()} min';
+	}
+
+	String _timeRangeLabel(Map<String, dynamic> mission) {
+		final start = (mission['heuredebutmission'] ?? mission['heure_debut'] ?? mission['start_time'] ?? '').toString().trim();
+		final end = (mission['heurefinmission'] ?? mission['heure_fin'] ?? mission['end_time'] ?? '').toString().trim();
+		if (start.isEmpty && end.isEmpty) return '';
+		if (start.isNotEmpty && end.isNotEmpty) {
+			return '$start → $end';
+		}
+		return start.isNotEmpty ? start : end;
+	}
+
+	String _missionRequester(Map<String, dynamic> mission) {
+		final firstCandidates = [mission['prenom_demandeur'], mission['contactdemandeur_firstname'], mission['demandeur_firstname']];
+		final lastCandidates = [mission['nom_demandeur'], mission['contactdemandeur_lastname'], mission['demandeur_lastname']];
+		final first = _cleanPersonPart(firstCandidates);
+		final last = _cleanPersonPart(lastCandidates);
+		if (first != null && last != null) {
+			return '${_capitalize(first)} ${last.toUpperCase()}';
+		}
+		final combinedCandidates = [mission['demandeur'], mission['contactdemandeur_name']];
+		for (final raw in combinedCandidates) {
+			final value = raw?.toString().trim();
+			if (value != null && value.isNotEmpty) {
+				return value;
+			}
+		}
+		return first ?? last ?? '';
+	}
+
+	String? _cleanPersonPart(List<dynamic> inputs) {
+		for (final raw in inputs) {
+			final value = raw?.toString().trim();
+			if (value != null && value.isNotEmpty) {
+				return value;
+			}
+		}
+		return null;
+	}
+
+	String _capitalize(String input) {
+		if (input.isEmpty) return input;
+		return input[0].toUpperCase() + input.substring(1).toLowerCase();
+	}
+
+	double _parseAmount(dynamic raw) {
+		if (raw == null) return 0;
+		if (raw is num) return raw.toDouble();
+		final cleaned = raw.toString().replaceAll(RegExp(r'[^0-9,.-]'), '').replaceAll(',', '.');
+		return double.tryParse(cleaned) ?? 0;
+	}
+
+	double? _parseDurationMinutes(dynamic raw) {
+		if (raw == null) return null;
+		if (raw is num) return raw.toDouble();
+		final text = raw.toString().trim();
+		if (text.isEmpty) return null;
+		final normalized = text.replaceAll(',', '.');
+		final hhmmMatch = RegExp(r'^(\d{1,2})[:hH](\d{1,2})$').firstMatch(normalized);
+		if (hhmmMatch != null) {
+			final hours = int.tryParse(hhmmMatch.group(1)!);
+			final minutes = int.tryParse(hhmmMatch.group(2)!);
+			if (hours != null && minutes != null) {
+				return ((hours * 60) + minutes).toDouble();
+			}
+		}
+		return double.tryParse(normalized);
+	}
+
+	double? _extractDurationMinutes(Map<String, dynamic> mission) {
+		final direct = mission['dureemission'] ?? mission['duration'] ?? mission['duration_minutes'];
+		final parsed = _parseDurationMinutes(direct);
+		if (parsed != null) return parsed;
+		final startRaw = mission['heuredebutmission'] ?? mission['heure_debut'] ?? mission['start_time'];
+		final endRaw = mission['heurefinmission'] ?? mission['heure_fin'] ?? mission['end_time'];
+		if (startRaw == null || endRaw == null) return null;
+		final start = _parseTimeOfDay(startRaw.toString());
+		final end = _parseTimeOfDay(endRaw.toString());
+		if (start == null || end == null) return null;
+		var duration = end.difference(start).inMinutes;
+		if (duration <= 0) {
+			duration = end.add(const Duration(days: 1)).difference(start).inMinutes;
+		}
+		return duration > 0 ? duration.toDouble() : null;
+	}
+
+	DateTime? _parseTimeOfDay(String input) {
+		final match = RegExp(r'^(\d{1,2})[:hH](\d{1,2})$').firstMatch(input.trim());
+		if (match == null) return null;
+		final hours = int.tryParse(match.group(1)!);
+		final minutes = int.tryParse(match.group(2)!);
+		if (hours == null || minutes == null) return null;
+		return DateTime(2000, 1, 1, hours, minutes);
 	}
 
 	DateTime? _missionDate(Map<String, dynamic> mission) {
@@ -1060,168 +1598,12 @@ class _BillingPageState extends State<BillingPage> {
 		return ref.contains(normalizedClient);
 	}
 
-	String _formatCurrency(double value) {
-		final formatted = _currencyFormat.format(value);
-		return formatted.replaceAll('\u00A0', ' ').replaceAll('\u202F', ' ');
-	}
-
-	String _formatQuantity(double value) {
-		final formatted = _quantityFormat.format(value);
-		return formatted.replaceAll('\u00A0', ' ').replaceAll('\u202F', ' ');
-	}
-
-	String _formatTva(Map<String, dynamic> mission) {
-		final raw = mission['produit_tva_tx'] ?? mission['tva_tx'] ?? mission['tva'];
-		final value = raw is num ? raw.toDouble() : double.tryParse(raw?.toString() ?? '');
-		if (value == null || value <= 0) return '0 %';
-		return '${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 2)} %';
-	}
-
-	String _designationFor(Map<String, dynamic> mission) {
-		return _designationLines(mission).join('\n');
-	}
-
-	String _formatMissionDuration(Map<String, dynamic> mission) {
-		final raw = mission['dureemission'] ?? mission['duration'] ?? mission['duration_minutes'];
-		final parsed = _parseDurationMinutes(raw);
-		if (parsed == null || parsed <= 0) return '';
-		if (parsed % 60 == 0) {
-			return '${(parsed / 60).round()}h';
-		}
-		return '${parsed.round()} min';
-	}
-
-	List<String> _designationLinesForUi(Map<String, dynamic> mission) {
-		return _designationLines(mission);
-	}
-
-	List<String> _designationLines(Map<String, dynamic> mission) {
-		final lines = <String>[];
-		final produitLabel = mission['produit_label']?.toString().trim();
-		final produitRef = mission['produit_ref']?.toString().trim();
-		final title = (produitLabel != null && produitLabel.isNotEmpty)
-			? produitLabel
-			: ((produitRef != null && produitRef.isNotEmpty) ? produitRef : 'Mission');
-		lines.add(title);
-		final date = _missionDate(mission);
-		final dateLabel = date != null ? DateFormat('dd/MM/yyyy').format(date) : '-';
-		lines.add('Date : $dateLabel');
-		final timeRange = _timeRangeLabel(mission);
-		lines.add('Heure : ${timeRange.isNotEmpty ? timeRange : '-'}');
-		final duration = _formatMissionDuration(mission);
-		lines.add('Durée : ${duration.isNotEmpty ? duration : '-'}');
-		final requester = _missionRequester(mission);
-		lines.add('Demandeur : ${requester.isNotEmpty ? requester : '-'}');
-		return lines;
-	}
-
-	String _timeRangeLabel(Map<String, dynamic> mission) {
-		final start = (mission['heuredebutmission'] ?? mission['heure_debut'] ?? mission['start_time'] ?? '').toString().trim();
-		final end = (mission['heurefinmission'] ?? mission['heure_fin'] ?? mission['end_time'] ?? '').toString().trim();
-		if (start.isEmpty && end.isEmpty) return '';
-		if (start.isNotEmpty && end.isNotEmpty) {
-			return '$start → $end';
-		}
-		return start.isNotEmpty ? start : end;
-	}
-
-	String _missionRequester(Map<String, dynamic> mission) {
-		final firstCandidates = [
-			mission['prenom_demandeur'],
-			mission['contactdemandeur_firstname'],
-			mission['demandeur_firstname'],
-		];
-		final lastCandidates = [
-			mission['nom_demandeur'],
-			mission['contactdemandeur_lastname'],
-			mission['demandeur_lastname'],
-		];
-		final firstName = _cleanPersonPart(firstCandidates);
-		final lastName = _cleanPersonPart(lastCandidates);
-		if (firstName != null && lastName != null) {
-			return '${_capitalize(firstName)} ${lastName.toUpperCase()}';
-		}
-		final combinedCandidates = [
-			mission['demandeur'],
-			mission['contactdemandeur_name'],
-		];
-		for (final raw in combinedCandidates) {
-			final value = raw?.toString().trim();
-			if (value != null && value.isNotEmpty) {
-				return value;
-			}
-		}
-		return firstName ?? lastName ?? '';
-	}
-
-	String? _cleanPersonPart(List<dynamic> inputs) {
-		for (final raw in inputs) {
-			final value = raw?.toString().trim();
-			if (value != null && value.isNotEmpty) {
-				return value;
-			}
-		}
-		return null;
-	}
-
-	String _capitalize(String input) {
-		if (input.isEmpty) return input;
-		return input[0].toUpperCase() + input.substring(1).toLowerCase();
-	}
-
-	CompanyInfo get _resolvedCompanyInfo => _companyInfo ?? CompanyInfo.fallback();
-
-	List<String> _companyInfoMetaLines(CompanyInfo info) {
-		final lines = <String>[];
-		final siret = info.siret.trim();
-		if (siret.isNotEmpty) {
-			lines.add('SIRET : $siret');
-		}
-		final phone = info.phone.trim();
-		if (phone.isNotEmpty) {
-			lines.add('Tél. : $phone');
-		}
-		final email = info.email.trim();
-		if (email.isNotEmpty) {
-			lines.add('Email : $email');
-		}
-		final website = info.website.trim();
-		if (website.isNotEmpty) {
-			lines.add('Site : $website');
-		}
-		return lines;
-	}
-
-	List<String> _companyInfoLinesForPdf(CompanyInfo info) {
-		final lines = <String>[];
-		final name = info.name.trim();
-		if (name.isNotEmpty) {
-			lines.add(name);
-		}
-		lines.addAll(info.addressLines);
-		lines.addAll(_companyInfoMetaLines(info));
-		return lines;
-	}
-
 	List<String> _clientAddressLinesForPdf() {
 		final mission = _missionWithClientDetails();
 		if (mission == null) return [];
 		final lines = <String>[];
-		final address1 = _stringValueFromKeys(mission, const [
-			'client_address',
-			'client_address_line1',
-			'client_address1',
-			'adresse_client',
-			'adresse',
-			'address',
-		]);
-		final address2 = _stringValueFromKeys(mission, const [
-			'client_address2',
-			'client_address_line2',
-			'adresse_client2',
-			'adresse2',
-			'address2',
-		]);
+		final address1 = _stringValueFromKeys(mission, const ['client_address', 'client_address_line1', 'client_address1', 'adresse_client', 'adresse', 'address']);
+		final address2 = _stringValueFromKeys(mission, const ['client_address2', 'client_address_line2', 'adresse_client2', 'adresse2', 'address2']);
 		final zip = _stringValueFromKeys(mission, const ['client_zip', 'zip', 'cp']);
 		final city = _stringValueFromKeys(mission, const ['client_town', 'client_city', 'ville', 'town', 'city']);
 		if (address1.isNotEmpty) {
@@ -1249,15 +1631,7 @@ class _BillingPageState extends State<BillingPage> {
 	}
 
 	bool _hasClientAddressData(Map<String, dynamic> mission) {
-		return _stringValueFromKeys(mission, const [
-			'client_address',
-			'client_address_line1',
-			'client_address1',
-			'adresse_client',
-			'adresse',
-			'address',
-		])
-				.isNotEmpty ||
+		return _stringValueFromKeys(mission, const ['client_address', 'client_address_line1', 'client_address1', 'adresse_client', 'adresse', 'address']).isNotEmpty ||
 			_stringValueFromKeys(mission, const ['client_zip', 'zip', 'cp', 'client_town', 'client_city', 'ville', 'town', 'city']).isNotEmpty;
 	}
 
@@ -1273,36 +1647,138 @@ class _BillingPageState extends State<BillingPage> {
 		return '';
 	}
 
-	double _parseAmount(dynamic raw) {
-		if (raw == null) return 0;
-		if (raw is num) return raw.toDouble();
-		final cleaned = raw.toString().replaceAll(RegExp(r'[^0-9,.-]'), '').replaceAll(',', '.');
-		return double.tryParse(cleaned) ?? 0;
+	CompanyInfo get _resolvedCompanyInfo => _companyInfo ?? CompanyInfo.fallback();
+
+	List<String> _companyInfoLinesForPdf(CompanyInfo info) {
+		final lines = <String>[];
+		final name = info.name.trim();
+		if (name.isNotEmpty) lines.add(name);
+		lines.addAll(info.addressLines);
+		lines.addAll(_companyInfoMetaLines(info));
+		return lines;
 	}
 
-	double? _extractDurationMinutes(Map<String, dynamic> mission) {
-		final direct = mission['dureemission'] ?? mission['duration'] ?? mission['duration_minutes'];
-		final parsed = _parseDurationMinutes(direct);
-		if (parsed != null) return parsed;
-		final startRaw = mission['heuredebutmission'] ?? mission['heure_debut'] ?? mission['start_time'];
-		final endRaw = mission['heurefinmission'] ?? mission['heure_fin'] ?? mission['end_time'];
-		if (startRaw == null || endRaw == null) return null;
-		final start = _parseTimeOfDay(startRaw.toString());
-		final end = _parseTimeOfDay(endRaw.toString());
-		if (start == null || end == null) return null;
-		var duration = end.difference(start).inMinutes;
-		if (duration <= 0) {
-			duration = end.add(const Duration(days: 1)).difference(start).inMinutes;
+	List<String> _companyInfoMetaLines(CompanyInfo info) {
+		final lines = <String>[];
+		final siret = info.siret.trim();
+		if (siret.isNotEmpty) lines.add('SIRET : $siret');
+		final phone = info.phone.trim();
+		if (phone.isNotEmpty) lines.add('Tél. : $phone');
+		final email = info.email.trim();
+		if (email.isNotEmpty) lines.add('Email : $email');
+		final website = info.website.trim();
+		if (website.isNotEmpty) lines.add('Site : $website');
+		return lines;
+	}
+
+	String? _missionRef(Map<String, dynamic> mission) {
+		final candidates = [mission['reference_devis'], mission['reference'], mission['ref'], mission['mission_ref']];
+		for (final candidate in candidates) {
+			final value = candidate?.toString().trim();
+			if (value != null && value.isNotEmpty) return value;
 		}
-		return duration > 0 ? duration.toDouble() : null;
+		return null;
 	}
 
-	DateTime? _parseTimeOfDay(String input) {
-		final match = RegExp(r'^(\d{1,2})[:hH](\d{1,2})$').firstMatch(input.trim());
-		if (match == null) return null;
-		final hours = int.tryParse(match.group(1)!);
-		final minutes = int.tryParse(match.group(2)!);
-		if (hours == null || minutes == null) return null;
-		return DateTime(2000, 1, 1, hours, minutes);
+	double? _tvaOptionFor(double value) {
+		if (_tvaRates.contains(value)) return value;
+		return _tvaRates.first;
+	}
+
+	static const List<double> _tvaRates = [0, 2.1, 5.5, 10, 20];
+
+	@override
+	void deactivate() {
+		_draftSaveTimer?.cancel();
+		super.deactivate();
+	}
+}
+
+class _EditableInvoiceLine {
+	_EditableInvoiceLine({
+		required this.mission,
+		required this.originalLine,
+		required this.currentLine,
+	});
+
+	final Map<String, dynamic>? mission;
+	final InvoiceLine originalLine;
+	InvoiceLine currentLine;
+
+	String? get missionRef => mission?['reference_devis']?.toString() ?? mission?['reference']?.toString();
+
+	void reset() {
+		currentLine = originalLine.copy();
+	}
+}
+
+class _SidebarEntry extends StatelessWidget {
+	const _SidebarEntry({
+		required this.icon,
+		required this.label,
+		required this.selected,
+		required this.onTap,
+		required this.collapsed,
+	});
+
+	final IconData icon;
+	final String label;
+	final bool selected;
+	final VoidCallback onTap;
+	final bool collapsed;
+
+	@override
+	Widget build(BuildContext context) {
+		return Padding(
+			padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+			child: InkWell(
+				borderRadius: BorderRadius.circular(8),
+				onTap: onTap,
+				child: Container(
+					padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+					decoration: BoxDecoration(
+						color: selected ? const Color(0xFFE3E8FF) : Colors.transparent,
+						borderRadius: BorderRadius.circular(8),
+					),
+					child: Row(
+						children: [
+							Icon(icon, color: selected ? const Color(0xFF000091) : const Color(0xFF4B5563)),
+							if (!collapsed) ...[
+								const SizedBox(width: 12),
+								Expanded(
+									child: Text(
+										label,
+										style: TextStyle(
+											fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+											color: selected ? const Color(0xFF000091) : const Color(0xFF374151),
+										),
+									),
+								),
+							],
+						],
+					),
+				),
+			),
+		);
+	}
+}
+
+class _SavingDraftBadge extends StatelessWidget {
+	const _SavingDraftBadge();
+
+	@override
+	Widget build(BuildContext context) {
+		return Container(
+			padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+			decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)]),
+			child: Row(
+				mainAxisSize: MainAxisSize.min,
+				children: const [
+					SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+					SizedBox(width: 8),
+					Text('Sauvegarde…'),
+				],
+			),
+		);
 	}
 }

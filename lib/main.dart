@@ -7,7 +7,6 @@ import 'screens/admin_mockup_preview.dart';
 import 'screens/admin_page.dart';
 import 'screens/export_page.dart';
 import 'pages/interpreters_page.dart';
-import 'pages/missions_page.dart';
 import 'pages/billing_page.dart';
 import 'pages/missions_table_page.dart';
 import 'pages/company_info_page.dart';
@@ -64,7 +63,6 @@ class MyApp extends StatelessWidget {
         '/login': (context) => const LoginPage(),
         '/admin-mockup': (context) => const AdminMockupPreview(),
         '/interpreters': (context) => InterpretersPage(userRights: AuthManager.userRights),
-        '/missions': (context) => MissionsPage(userRights: AuthManager.userRights),
         '/missions-table': (context) => MissionsTablePage(userRights: AuthManager.userRights),
         '/billing': (context) => BillingPage(userRights: AuthManager.userRights),
         '/admin': (context) => AdminPage(userRights: AuthManager.userRights),

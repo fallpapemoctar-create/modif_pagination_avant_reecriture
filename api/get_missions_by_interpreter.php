@@ -5,6 +5,17 @@ header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Content-Type: application/json");
 require_once "config.php";
 
+function columnExists(PDO $pdo, string $table, string $column): bool {
+    try {
+        $table = str_replace('`', '', $table);
+        $column = str_replace('`', '', $column);
+        $stmt = $pdo->query("SHOW COLUMNS FROM `$table` LIKE " . $pdo->quote($column));
+        return $stmt && $stmt->rowCount() > 0;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
@@ -17,7 +28,11 @@ $interpreter_id = $input['interpreter_id'] ?? null;
 try {
     if ($interpreter_id) {
         // Return missions for the specified interpreter (existing behavior)
-                $sql = "SELECT
+        $hasStatusPaymentColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'status_payment');
+        $hasDatePaymentColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'date_payment');
+        $statusFallbackExpr = $hasStatusPaymentColumn ? 'm.status_payment' : '0';
+        $datePaymentSelect = $hasDatePaymentColumn ? 'm.date_payment' : 'NULL';
+			$sql = "SELECT
                         m.rowid,
                         m.ref as reference_devis,
                         m.nominterprete,
@@ -26,22 +41,21 @@ try {
                         m.montant_mission,
                         -- status_payment is derived from billed.status when present
                         CASE
-                            WHEN b.status IS NULL THEN m.status_payment
+                            WHEN b.status IS NULL THEN {$statusFallbackExpr}
                             WHEN LOWER(b.status) IN ('paid','payé','payee','paye','1','yes','true') THEN 1
                             ELSE 0
                         END AS status_payment,
-                        m.date_payment,
+                        {$datePaymentSelect} AS date_payment,
                         b.status AS billed_status,
                         u.firstname,
                         u.lastname,
                         p.ref as produit_ref,
                         p.rowid as id_produit_service,
-                        s.prix_achat_ht,
-                        s.prix_vente_ht
+                        p.price_min AS prix_achat_ht,
+                        p.price AS prix_vente_ht
                 FROM llx_missionsplanet_mission m
                 INNER JOIN llx_user u ON m.nominterprete = u.rowid
                 LEFT JOIN llx_product p ON m.langue = p.rowid
-                LEFT JOIN tble_ref_services s ON p.rowid = s.id_libelle_service
                 -- Join latest billed status per mission by matching on ref
                 LEFT JOIN (
                     SELECT bb.ref, bb.status

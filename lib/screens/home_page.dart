@@ -3,7 +3,6 @@ import '../core/auth_manager.dart';
 import '../core/user_rights.dart';
 import '../core/responsive_helper.dart';
 import '../pages/interpreters_page.dart';
-import '../pages/missions_page.dart';
 import '../pages/missions_table_page.dart';
 import '../pages/billing_page.dart';
 import '../screens/admin_page.dart';
@@ -37,8 +36,6 @@ class HomePage extends StatelessWidget {
       views.add(InterpretersPage(userRights: rights));
     }
     if (rights.canManageMissions() || rights.isAdmin()) {
-      tabs.add(const Tab(icon: Icon(Icons.work), text: "Missions"));
-      views.add(MissionsPage(userRights: rights));
       tabs.add(const Tab(icon: Icon(Icons.table_rows), text: "Missions (Tableau)"));
       views.add(MissionsTablePage(userRights: rights));
       tabs.add(const Tab(icon: Icon(Icons.receipt_long), text: "Facturation"));
@@ -295,14 +292,6 @@ class HomePage extends StatelessWidget {
                 label: "Interprètes",
                 color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/interpreters"),
-              ),
-            if (rights.canManageMissions() || rights.isAdmin())
-              _dashboardCard(
-                context: context,
-                icon: Icons.work,
-                label: "Missions",
-                color: const Color(0xFF000091),
-                onTap: () => Navigator.pushNamed(context, "/missions"),
               ),
             if (rights.canManageMissions() || rights.isAdmin())
               _dashboardCard(

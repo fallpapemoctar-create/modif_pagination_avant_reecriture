@@ -44,9 +44,11 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   String _statusFilter = 'Tous';
   final List<String> _statusOptions = const [
     'Tous',
-    'À facturer',
-    'Facturé',
-    'Payé',
+    'Brouillon',
+    'Validée',
+    'Envoyée',
+    'Renvoyée au collaborateur',
+    'Payée',
   ];
 
   static const List<String> _missionTypeChoices = <String>[
@@ -61,16 +63,14 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
 
   // Workflow (mission_status) filter
   String _workflowFilter = 'Tous';
-  List<String> _workflowOptions = ['Tous'];
+  final List<String> _workflowOptions = const ['Tous', '0', '1', '9'];
   List<String> _languageOptions = <String>[];
   List<_AutocompleteEntry<String>> _languageEntries = <_AutocompleteEntry<String>>[];
   // Human-readable labels for workflow status
   final Map<String, String> _workflowLabels = const {
     '0': 'Brouillon',
-    '1': 'Planifiée',
-    '2': 'En cours',
-    '3': 'Terminée',
-    '4': 'Annulée',
+    '1': 'Validé',
+    '9': 'Annulé',
   };
   String _labelForStatus(String code) {
     final c = code.trim();
@@ -80,6 +80,28 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
 
   String _labelForBillingFilter(String value) {
     return value == 'Tous' ? 'Statut facture interprète: Tous' : value;
+  }
+
+  bool _matchesBillingStatus(String rawStatus, String filter) {
+    final status = rawStatus.toLowerCase().trim();
+    switch (filter) {
+      case 'Brouillon':
+        return status.isEmpty ||
+            status.contains('brouillon') ||
+            status.contains('draft') ||
+            status.contains('a facturer') ||
+            status.contains('à facturer');
+      case 'Validée':
+        return status.contains('valid');
+      case 'Envoyée':
+        return status.contains('envoy');
+      case 'Renvoyée au collaborateur':
+        return status.contains('renvoy') || status.contains('collabor');
+      case 'Payée':
+        return status.contains('pay');
+      default:
+        return true;
+    }
   }
 
   final Map<String, bool> _visibleColumns = {
@@ -158,26 +180,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     final newLanguageOptions = _mergeLanguageOptions(data);
     final bool shouldUpdateLanguagesFromMissions =
       _languageOptions.isEmpty && newLanguageOptions.isNotEmpty;
-    // Build workflow options from loaded data
-    final wfSet = <String>{};
-    for (final m in data) {
-      final v = (m['mission_status'] ?? '').toString().trim();
-      if (v.isNotEmpty) wfSet.add(v);
-    }
-    final wfList = wfSet.toList()
-      ..sort((a, b) {
-        final ai = int.tryParse(a);
-        final bi = int.tryParse(b);
-        if (ai != null && bi != null) return ai.compareTo(bi);
-        return a.compareTo(b);
-      });
     setState(() {
       _missions = data;
       _total = (resp['total'] as int?) ?? data.length;
       _page = (resp['page'] as int?) ?? _page;
       _pageSize = (resp['pageSize'] as int?) ?? _pageSize;
       _busy = false;
-      _workflowOptions = ['Tous', ...wfList];
       if (shouldUpdateLanguagesFromMissions) {
         _languageOptions = newLanguageOptions;
         if (_languageEntries.isEmpty) {
@@ -227,17 +235,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     if (_statusFilter != 'Tous') {
       list = list.where((m) {
         final st = (m['billed_status'] ?? '').toString().toLowerCase().trim();
-        switch (_statusFilter) {
-          case 'À facturer':
-            return st.isEmpty ||
-                st.contains('a facturer') ||
-                st.contains('à facturer');
-          case 'Facturé':
-            return st.contains('factur');
-          case 'Payé':
-            return st.contains('pay');
-        }
-        return true;
+        return _matchesBillingStatus(st, _statusFilter);
       }).toList();
     }
     if (_workflowFilter != 'Tous') {
@@ -744,17 +742,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       if (_statusFilter == 'Tous') return all;
       var filtered = all.where((m) {
         final st = (m['billed_status'] ?? '').toString().toLowerCase().trim();
-        switch (_statusFilter) {
-          case 'À facturer':
-            return st.isEmpty ||
-                st.contains('a facturer') ||
-                st.contains('à facturer');
-          case 'Facturé':
-            return st.contains('factur');
-          case 'Payé':
-            return st.contains('pay');
-        }
-        return true;
+        return _matchesBillingStatus(st, _statusFilter);
       }).toList();
       if (_dateStart != null && _dateEnd != null) {
         filtered = filtered.where(_matchesDateRange).toList();
@@ -2365,7 +2353,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   if (_visibleColumns['facture'] ?? true) {
                     cells.add(
                       _cell(
-                        facture.isEmpty ? 'À facturer' : facture,
+                        facture.isEmpty ? 'Brouillon' : facture,
                         keyWidth: 'facture',
                       ),
                     );

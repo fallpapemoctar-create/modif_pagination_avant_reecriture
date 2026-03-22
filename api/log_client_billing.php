@@ -1,0 +1,303 @@
+<?php
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Content-Type: application/json; charset=UTF-8");
+
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/billing_helpers.php';
+require_once __DIR__ . '/invoice_line_helpers.php';
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+function respond(int $status, array $payload): void {
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) {
+    respond(400, ['success' => false, 'error' => 'Payload JSON invalide.']);
+}
+
+$missions = $input['missions'] ?? [];
+if (!is_array($missions) || empty($missions)) {
+    respond(400, ['success' => false, 'error' => 'La liste des missions est obligatoire.']);
+}
+
+$invoiceNumber = trim((string) ($input['invoice_number'] ?? ''));
+if ($invoiceNumber === '') {
+    respond(400, ['success' => false, 'error' => 'Le numéro de facture est obligatoire.']);
+}
+
+$clientName = trim((string) ($input['client_name'] ?? ''));
+$periodMonthRaw = $input['period_month'] ?? null;
+$periodMonth = $periodMonthRaw !== null ? invoiceParsePeriodMonth($periodMonthRaw) : null;
+$periodMonthKey = $periodMonth ? $periodMonth->format('Y-m-01') : null;
+$draftKeyInput = trim((string) ($input['draft_key'] ?? ''));
+$draftKey = $draftKeyInput !== '' ? $draftKeyInput : null;
+if ($draftKey === null && $clientName !== '' && $periodMonthKey) {
+    $draftKey = invoiceDraftKey($clientName, $periodMonthKey);
+}
+$billedAtRaw = $input['billed_at'] ?? null;
+$timestamp = $billedAtRaw ? strtotime((string) $billedAtRaw) : time();
+$timestamp = $timestamp ?: time();
+$billedAt = date('Y-m-d H:i:s', $timestamp);
+
+[$statusCode, $defaultStatusLabel] = normalizeClientBillingStatus($input['status'] ?? null);
+$statusLabel = trim((string) ($input['status_label'] ?? ''));
+if ($statusLabel === '') {
+    $statusLabel = $defaultStatusLabel;
+}
+
+$amountTotal = isset($input['amount_total']) ? (float) $input['amount_total'] : null;
+$userId = isset($input['user_id']) ? (int) $input['user_id'] : null;
+$userName = trim((string) ($input['user_name'] ?? ''));
+$notes = trim((string) ($input['notes'] ?? ''));
+$pdfFilenameRaw = trim((string) ($input['pdf_filename'] ?? ''));
+$pdfFilenameBase = sanitizeInvoiceFilename($pdfFilenameRaw);
+$pdfBinary = decodePdfPayload($input['pdf_base64'] ?? null);
+$pdfRelativePath = null;
+$pdfSize = null;
+$pdfStoredFilename = null;
+
+try {
+    ensureClientBillingTable($pdo);
+    ensureClientInvoiceLinesTable($pdo);
+
+    if ($pdfBinary !== null) {
+        $storageDir = __DIR__ . '/../build/client_billing';
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0775, true);
+        }
+        $uniqueSuffix = bin2hex(random_bytes(4));
+        $pdfStoredFilename = $pdfFilenameBase . '_' . date('Ymd_His') . '_' . $uniqueSuffix . '.pdf';
+        $target = $storageDir . '/' . $pdfStoredFilename;
+        if (file_put_contents($target, $pdfBinary) === false) {
+            respond(500, ['success' => false, 'error' => "Impossible d'enregistrer le PDF."]);
+        }
+        $pdfRelativePath = str_replace(__DIR__ . '/../', '', $target);
+        $pdfSize = strlen($pdfBinary);
+    }
+
+    $invoiceLines = [];
+    if (isset($input['invoice_lines']) && is_array($input['invoice_lines'])) {
+        foreach ($input['invoice_lines'] as $idx => $line) {
+            if (!is_array($line)) {
+                continue;
+            }
+            $designation = trim((string) ($line['designation'] ?? ''));
+            $missionRefLine = trim((string) ($line['mission_ref'] ?? ''));
+            $tvaRate = invoiceNormalizeDecimal($line['tva_rate'] ?? 0);
+            $unitPrice = invoiceNormalizeDecimal($line['unit_price_ht'] ?? $line['unit_price'] ?? 0);
+            $quantity = invoiceNormalizeDecimal($line['quantity'] ?? 1, 1.0);
+            $totalLine = invoiceNormalizeDecimal($line['total_ht'] ?? ($unitPrice * $quantity));
+            $invoiceLines[] = [
+                'mission_ref' => $missionRefLine === '' ? null : $missionRefLine,
+                'designation' => $designation,
+                'tva_rate' => $tvaRate,
+                'unit_price_ht' => $unitPrice,
+                'quantity' => $quantity <= 0 ? 1.0 : $quantity,
+                'total_ht' => $totalLine,
+                'sort_order' => $idx,
+                'notes' => trim((string) ($line['notes'] ?? '')),
+            ];
+        }
+    }
+
+    if (empty($invoiceLines) && $draftKey !== null) {
+        $draftStmt = $pdo->prepare("SELECT
+            mission_ref,
+            designation,
+            tva_rate,
+            unit_price_ht,
+            quantity,
+            total_ht,
+            notes
+        FROM tble_client_invoice_lines
+        WHERE draft_key = :draft
+        ORDER BY sort_order ASC, id ASC");
+
+        $draftStmt->execute([':draft' => $draftKey]);
+        $draftRows = $draftStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($draftRows as $idx => $row) {
+            $designation = trim((string) ($row['designation'] ?? ''));
+            if ($designation === '') {
+                $designation = 'Ligne de facture';
+            }
+            $invoiceLines[] = [
+                'mission_ref' => isset($row['mission_ref']) && $row['mission_ref'] !== '' ? $row['mission_ref'] : null,
+                'designation' => $designation,
+                'tva_rate' => invoiceNormalizeDecimal($row['tva_rate'] ?? 0),
+                'unit_price_ht' => invoiceNormalizeDecimal($row['unit_price_ht'] ?? 0),
+                'quantity' => invoiceNormalizeDecimal($row['quantity'] ?? 1, 1.0),
+                'total_ht' => invoiceNormalizeDecimal($row['total_ht'] ?? 0),
+                'sort_order' => $idx,
+                'notes' => trim((string) ($row['notes'] ?? '')),
+            ];
+        }
+    }
+
+    if (empty($invoiceLines)) {
+        foreach ($missions as $idx => $mission) {
+            if (!is_array($mission)) {
+                continue;
+            }
+            $invoiceLines[] = invoiceLineFromMission($mission, $idx);
+        }
+    }
+
+    $insertSql = "INSERT INTO tble_client_billed (
+        mission_ref,
+        client_name,
+        invoice_number,
+        invoice_total_ht,
+        amount_ht,
+        billed_at,
+        status_code,
+        status_label,
+        category,
+        pdf_path,
+        pdf_filename,
+        pdf_size,
+        created_by,
+        created_by_name,
+        notes
+    ) VALUES (
+        :mission_ref,
+        :client_name,
+        :invoice_number,
+        :invoice_total_ht,
+        :amount_ht,
+        :billed_at,
+        :status_code,
+        :status_label,
+        'client',
+        :pdf_path,
+        :pdf_filename,
+        :pdf_size,
+        :created_by,
+        :created_by_name,
+        :notes
+    ) ON DUPLICATE KEY UPDATE
+        invoice_total_ht = VALUES(invoice_total_ht),
+        amount_ht = VALUES(amount_ht),
+        billed_at = VALUES(billed_at),
+        status_code = VALUES(status_code),
+        status_label = VALUES(status_label),
+        pdf_path = VALUES(pdf_path),
+        pdf_filename = VALUES(pdf_filename),
+        pdf_size = VALUES(pdf_size),
+        created_by = VALUES(created_by),
+        created_by_name = VALUES(created_by_name),
+        notes = VALUES(notes),
+        updated_at = CURRENT_TIMESTAMP";
+
+    $stmt = $pdo->prepare($insertSql);
+    $inserted = 0;
+
+    $pdo->beginTransaction();
+
+    foreach ($missions as $mission) {
+        if (!is_array($mission)) {
+            continue;
+        }
+        $missionRef = trim((string) ($mission['reference'] ?? $mission['mission_ref'] ?? ''));
+        if ($missionRef === '') {
+            continue;
+        }
+        $lineAmount = isset($mission['amount_ht']) ? (float) $mission['amount_ht'] : null;
+        $stmt->execute([
+            ':mission_ref' => $missionRef,
+            ':client_name' => $clientName !== '' ? $clientName : null,
+            ':invoice_number' => $invoiceNumber,
+            ':invoice_total_ht' => $amountTotal,
+            ':amount_ht' => $lineAmount,
+            ':billed_at' => $billedAt,
+            ':status_code' => $statusCode,
+            ':status_label' => $statusLabel,
+            ':pdf_path' => $pdfRelativePath,
+            ':pdf_filename' => $pdfBinary !== null ? $pdfStoredFilename : null,
+            ':pdf_size' => $pdfSize,
+            ':created_by' => $userId,
+            ':created_by_name' => $userName !== '' ? $userName : null,
+            ':notes' => $notes !== '' ? $notes : null,
+        ]);
+        $inserted += $stmt->rowCount();
+    }
+
+    $deleteLines = $pdo->prepare('DELETE FROM tble_client_invoice_lines WHERE invoice_number = :invoice');
+    $deleteLines->execute([':invoice' => $invoiceNumber]);
+
+    $lineStmt = $pdo->prepare("INSERT INTO tble_client_invoice_lines (
+        invoice_number,
+        mission_ref,
+        designation,
+        tva_rate,
+        unit_price_ht,
+        quantity,
+        total_ht,
+        notes,
+        sort_order,
+        client_name,
+        period_month,
+        created_by,
+        created_by_name
+    ) VALUES (
+        :invoice_number,
+        :mission_ref,
+        :designation,
+        :tva_rate,
+        :unit_price_ht,
+        :quantity,
+        :total_ht,
+        :notes,
+        :sort_order,
+        :client_name,
+        :period_month,
+        :created_by,
+        :created_by_name
+    )");
+
+    foreach ($invoiceLines as $line) {
+        $lineStmt->execute([
+            ':invoice_number' => $invoiceNumber,
+            ':mission_ref' => $line['mission_ref'],
+            ':designation' => $line['designation'],
+            ':tva_rate' => $line['tva_rate'],
+            ':unit_price_ht' => $line['unit_price_ht'],
+            ':quantity' => $line['quantity'],
+            ':total_ht' => $line['total_ht'],
+            ':notes' => $line['notes'],
+            ':sort_order' => $line['sort_order'],
+            ':client_name' => $clientName !== '' ? $clientName : null,
+            ':period_month' => $periodMonthKey,
+            ':created_by' => $userId,
+            ':created_by_name' => $userName !== '' ? $userName : null,
+        ]);
+    }
+
+    if ($draftKey !== null) {
+        $cleanupDraftStmt = $pdo->prepare('DELETE FROM tble_client_invoice_lines WHERE draft_key = :draft');
+        $cleanupDraftStmt->execute([':draft' => $draftKey]);
+    }
+
+    $pdo->commit();
+
+    respond(200, [
+        'success' => true,
+        'rows' => $inserted,
+        'invoice_number' => $invoiceNumber,
+        'status_code' => $statusCode,
+        'status_label' => $statusLabel,
+    ]);
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    respond(500, ['success' => false, 'error' => $e->getMessage()]);
+}

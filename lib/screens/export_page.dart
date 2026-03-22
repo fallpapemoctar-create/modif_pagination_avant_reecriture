@@ -89,18 +89,6 @@ class _ExportPageState extends State<ExportPage> {
     }
   }
 
-  Future<void> _exportMissionsJson() async {
-    _setBusy(true, msg: 'Export des missions…');
-    try {
-      final list = await MissionService.getInterpretersWithMissions();
-      final jsonStr = const JsonEncoder.withIndent('  ').convert(list);
-      await _downloadText('missions.json', jsonStr, 'application/json');
-      _setBusy(false, msg: 'Missions exportées');
-    } catch (e) {
-      _setBusy(false, msg: 'Erreur export missions: $e');
-    }
-  }
-
   Future<void> _loadMissionsForTable({bool resetPage = false}) async {
     if (resetPage) _page = 1;
     _setBusy(true, msg: 'Chargement des missions…');
@@ -220,11 +208,6 @@ class _ExportPageState extends State<ExportPage> {
                   onPressed: _busy ? null : _exportUsersCsv,
                   icon: const Icon(Icons.person),
                   label: const Text('Exporter Utilisateurs (CSV)'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _busy ? null : _exportMissionsJson,
-                  icon: const Icon(Icons.work),
-                  label: const Text('Exporter Missions (JSON)'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _busy ? null : _loadMissionsForTable,
