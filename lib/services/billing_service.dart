@@ -141,8 +141,48 @@ class BillingService {
     }
   }
 
-  static Future<ClientInvoiceLinesResult> fetchInvoiceLines(String invoiceNumber) async {
-    final payload = {'invoice_number': invoiceNumber.trim()};
+  static Future<void> updateInvoiceStatus({
+    required String invoiceNumber,
+    required String statusCode,
+    required String statusLabel,
+    int? userId,
+    String? userName,
+  }) async {
+    final payload = <String, dynamic>{
+      'invoice_number': invoiceNumber.trim(),
+      'status_code': statusCode,
+      'status_label': statusLabel,
+    };
+    if (userId != null) {
+      payload['user_id'] = userId;
+    }
+    if (userName != null && userName.trim().isNotEmpty) {
+      payload['user_name'] = userName.trim();
+    }
+
+    final response = await http.post(
+      Uri.parse("${_baseUrl}update_client_invoice_status.php"),
+      headers: const {"Content-Type": "application/json"},
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception("Impossible de mettre à jour le statut de la facture (${response.statusCode}).");
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['success'] != true) {
+      final message = decoded is Map && decoded['error'] is String
+          ? decoded['error'] as String
+          : 'Réponse inattendue du serveur.';
+      throw Exception(message);
+    }
+  }
+
+  static Future<ClientInvoiceLinesResult> fetchInvoiceLines(String invoiceNumber, {String? missionRef}) async {
+    final payload = {
+      'invoice_number': invoiceNumber.trim(),
+      if (missionRef != null && missionRef.trim().isNotEmpty) 'mission_ref': missionRef.trim(),
+    };
     final response = await http.post(
       Uri.parse("${_baseUrl}get_client_invoice_lines.php"),
       headers: const {"Content-Type": "application/json"},
@@ -162,6 +202,7 @@ class BillingService {
       final totalHt = decoded['total_ht'] is num ? (decoded['total_ht'] as num).toDouble() : null;
       return ClientInvoiceLinesResult(
         invoiceNumber: invoiceNumber,
+        missionRef: missionRef,
         totalHt: totalHt,
         lines: lines,
       );
@@ -169,6 +210,62 @@ class BillingService {
     final message = decoded is Map && decoded['error'] is String
         ? decoded['error'] as String
         : 'Reponse inattendue du serveur.';
+    throw Exception(message);
+  }
+
+  static Future<ClientInvoiceLinesResult> updateInvoiceLines({
+    required String invoiceNumber,
+    required String missionRef,
+    required List<InvoiceLine> lines,
+    int? userId,
+    String? userName,
+  }) async {
+    final payload = {
+      'invoice_number': invoiceNumber.trim(),
+      'mission_ref': missionRef.trim(),
+      'lines': lines
+          .asMap()
+          .entries
+          .map(
+            (entry) => {
+              ...entry.value.toJson(),
+              'sort_order': entry.key,
+            },
+          )
+          .toList(),
+      if (userId != null && userId > 0) 'user_id': userId,
+      if (userName != null && userName.trim().isNotEmpty) 'user_name': userName.trim(),
+    };
+
+    final response = await http.post(
+      Uri.parse('${_baseUrl}update_client_invoice_lines.php'),
+      headers: const {"Content-Type": "application/json"},
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Impossible de mettre à jour les lignes (${response.statusCode}).');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['success'] == true) {
+      final rawLines = decoded['lines'] as List? ?? const [];
+      final updatedLines = rawLines
+          .whereType<Map>()
+          .map((line) => InvoiceLine.fromJson(Map<String, dynamic>.from(line)))
+          .toList();
+      final totalHt = decoded['total_ht'] is num ? (decoded['total_ht'] as num).toDouble() : null;
+      return ClientInvoiceLinesResult(
+        invoiceNumber: invoiceNumber,
+        missionRef: missionRef,
+        totalHt: totalHt,
+        lines: updatedLines,
+      );
+    }
+
+    final message = decoded is Map && decoded['error'] is String
+        ? decoded['error'] as String
+        : 'Réponse inattendue du serveur.';
     throw Exception(message);
   }
 
@@ -294,6 +391,29 @@ class ClientInvoiceSummary {
     this.createdByName,
   });
 
+  ClientInvoiceSummary copyWith({
+    String? statusCode,
+    String? statusLabel,
+    double? invoiceTotalHt,
+    double? amountHt,
+  }) {
+    return ClientInvoiceSummary(
+      id: id,
+      invoiceNumber: invoiceNumber,
+      clientName: clientName,
+      statusCode: statusCode ?? this.statusCode,
+      statusLabel: statusLabel ?? this.statusLabel,
+      amountHt: amountHt ?? this.amountHt,
+      invoiceTotalHt: invoiceTotalHt ?? this.invoiceTotalHt,
+      billedAt: billedAt,
+      missionRef: missionRef,
+      pdfFilename: pdfFilename,
+      pdfPath: pdfPath,
+      createdBy: createdBy,
+      createdByName: createdByName,
+    );
+  }
+
   factory ClientInvoiceSummary.fromJson(Map<String, dynamic> json) {
     DateTime? billedAt;
     final billedRaw = json['billed_at'];
@@ -336,10 +456,12 @@ class ClientInvoiceLinesResult {
   ClientInvoiceLinesResult({
     required this.invoiceNumber,
     required this.lines,
+    this.missionRef,
     this.totalHt,
   });
 
   final String invoiceNumber;
+  final String? missionRef;
   final List<InvoiceLine> lines;
   final double? totalHt;
 }

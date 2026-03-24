@@ -131,34 +131,57 @@ function invoiceIsLocked(PDO $pdo, string $invoiceNumber): bool {
 
 function normalizeClientBillingStatus($value): array {
     $code = 'draft';
-    $label = 'À facturer';
-    if ($value !== null) {
-        $value = strtolower(trim((string) $value));
-        switch ($value) {
-            case 'sent':
-            case 'envoye':
-            case 'envoyee':
-            case 'envoyée':
-            case 'env':
-                $code = 'sent';
-                $label = 'Facture envoyée';
-                break;
-            case 'paid':
-            case 'payee':
-            case 'payée':
-            case 'reglee':
-            case 'réglée':
-            case 'paid_partially':
-                $code = 'paid';
-                $label = 'Facture réglée';
-                break;
-            case 'draft':
-            case 'afacturer':
-            case 'a_facturer':
-            default:
-                $code = 'draft';
-                $label = 'À facturer';
-        }
+    $label = 'Brouillon';
+    if ($value === null) {
+        return [$code, $label];
+    }
+
+    $normalized = strtolower(trim((string) $value));
+    switch ($normalized) {
+        case 'validée':
+        case 'validee':
+        case 'valide':
+        case 'validated':
+        case 'validate':
+            $code = 'validated';
+            $label = 'Validée';
+            break;
+        case 'envoyee':
+        case 'envoyée':
+        case 'envoye':
+        case 'envoyé':
+        case 'sent':
+        case 'env':
+            $code = 'sent';
+            $label = 'Envoyée';
+            break;
+        case 'payee':
+        case 'payée':
+        case 'payee_partiellement':
+        case 'payee partiellement':
+        case 'reglee':
+        case 'réglée':
+        case 'paid':
+        case 'paid_partially':
+            $code = 'paid';
+            $label = 'Payée';
+            break;
+        case 'impayee':
+        case 'impayée':
+        case 'overdue':
+        case 'unpaid':
+        case 'retard':
+            $code = 'unpaid';
+            $label = 'Impayée';
+            break;
+        case 'brouillon':
+        case 'draft':
+        case 'afacturer':
+        case 'a_facturer':
+        default:
+            $code = 'draft';
+            $label = 'Brouillon';
+            break;
     }
     return [$code, $label];
 }

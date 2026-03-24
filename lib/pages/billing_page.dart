@@ -3,28 +3,289 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 import '../core/auth_manager.dart';
 import '../core/brand_footer.dart';
+import '../core/models/invoice_line.dart';
 import '../core/responsive_helper.dart';
 import '../core/user_rights.dart';
-import '../core/models/invoice_line.dart';
 import '../models/company_info.dart';
 import '../services/billing_service.dart';
 import '../services/company_info_service.dart';
 import '../services/mission_service.dart';
-import '../widgets/client_autocomplete_field.dart';
 import '../utils/pdf_download_helper_stub.dart'
 	if (dart.library.html) '../utils/pdf_download_helper_web.dart';
-import 'missions_table_page_arguments.dart';
+import '../widgets/client_autocomplete_field.dart';
+
+/*
+		final headerChips = <Widget>[
+			Container(
+				padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+				decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999), border: Border.all(color: const Color(0xFFD6DAE6))),
+				child: Text('Émise le $billedAtLabel', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+			),
+			if (missionRef != null && missionRef.trim().isNotEmpty)
+				Container(
+					padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+					decoration: BoxDecoration(color: const Color(0xFFE8EEFF), borderRadius: BorderRadius.circular(999)),
+					child: Text('Mission $missionRef', style: const TextStyle(color: Color(0xFF000091), fontWeight: FontWeight.w700, fontSize: 12)),
+				),
+			Container(
+				padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+				decoration: BoxDecoration(color: isLocked ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF3), borderRadius: BorderRadius.circular(999)),
+				child: Text(_invoiceStatusLabelFor(invoice), style: TextStyle(color: isLocked ? const Color(0xFF92400E) : const Color(0xFF166534), fontWeight: FontWeight.w700, fontSize: 12)),
+			),
+		];
+
+		final detailActions = <Widget>[
+			if (isLocked)
+				Container(
+					width: double.infinity,
+					margin: const EdgeInsets.only(bottom: 12),
+					padding: const EdgeInsets.all(10),
+					decoration: BoxDecoration(
+						color: const Color(0xFFFEF3C7),
+						borderRadius: BorderRadius.circular(8),
+						border: Border.all(color: const Color(0xFFF59E0B)),
+					),
+					child: const Text('Facture payée : les lignes du détail sont verrouillées.'),
+				),
+			if (!isLocked && missionRef != null && missionRef.trim().isNotEmpty)
+				Padding(
+					padding: const EdgeInsets.only(bottom: 12),
+					child: Row(
+						children: [
+							OutlinedButton.icon(
+								onPressed: _selectedInvoiceLineEditors.isEmpty ? null : _resetSelectedInvoiceLines,
+								icon: const Icon(Icons.restore),
+								label: const Text('Réinitialiser'),
+							),
+							const SizedBox(width: 12),
+							Expanded(
+								child: FilledButton.icon(
+									onPressed: _savingInvoiceLinesPanel || !_hasSelectedInvoiceLineChanges ? null : _saveSelectedInvoiceLines,
+									icon: _savingInvoiceLinesPanel
+										? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+										: const Icon(Icons.save_outlined),
+									label: Text(_savingInvoiceLinesPanel ? 'Enregistrement...' : 'Enregistrer les lignes'),
+								),
+							),
+						],
+					),
+				),
+		];
+
+		final linesContent = _loadingInvoiceLinesPanel
+			? const Center(child: CircularProgressIndicator())
+			: missionRef == null || missionRef.trim().isEmpty
+				? const Center(child: Text('Aucune référence mission disponible pour cette facture.'))
+				: lines.isEmpty
+					? const Center(child: Text('Aucune ligne trouvée pour cette mission.'))
+					: Scrollbar(
+						thumbVisibility: true,
+						child: ListView.separated(
+							itemCount: lines.length,
+							separatorBuilder: (_, __) => const Divider(height: 20),
+							itemBuilder: (context, index) => _buildStoredInvoiceLineTile(index, isLocked: isLocked),
+						),
+					);
+
+		return Align(
+			alignment: Alignment.centerRight,
+			child: ConstrainedBox(
+				constraints: const BoxConstraints(maxWidth: 470),
+				child: Material(
+					elevation: 8,
+					borderRadius: const BorderRadius.only(topLeft: Radius.circular(18), bottomLeft: Radius.circular(18)),
+					child: Container(
+						color: Colors.white,
+						child: Column(
+							crossAxisAlignment: CrossAxisAlignment.start,
+							children: [
+								Container(
+									padding: EdgeInsets.fromLTRB(spacing, spacing, spacing, spacing - 2),
+									decoration: const BoxDecoration(
+										color: Color(0xFFF4F6FB),
+										borderRadius: BorderRadius.only(topLeft: Radius.circular(18)),
+										border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+									),
+									child: Column(
+										crossAxisAlignment: CrossAxisAlignment.start,
+										children: [
+											Row(
+												children: [
+													Container(
+														padding: const EdgeInsets.all(10),
+														decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+														child: const Icon(Icons.account_tree_outlined, color: Color(0xFF000091)),
+													),
+													const SizedBox(width: 12),
+													Expanded(
+														child: Column(
+															crossAxisAlignment: CrossAxisAlignment.start,
+															children: [
+																Text('Niveau 2 • Détail facture', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: const Color(0xFF000091), fontWeight: FontWeight.w700)),
+																const SizedBox(height: 4),
+																Text('Facture ${invoice.invoiceNumber}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+																const SizedBox(height: 2),
+																Text(invoice.clientName.isEmpty ? 'Client non renseigné' : invoice.clientName, style: const TextStyle(color: Color(0xFF6B7280))),
+															],
+														),
+													),
+													IconButton(onPressed: _closeInvoiceDetails, icon: const Icon(Icons.close)),
+												],
+											),
+											const SizedBox(height: 12),
+											Wrap(spacing: 8, runSpacing: 8, children: headerChips),
+										],
+									),
+								),
+								Expanded(
+									child: Padding(
+										padding: EdgeInsets.fromLTRB(spacing, 18, spacing, spacing),
+										child: Column(
+											crossAxisAlignment: CrossAxisAlignment.start,
+											children: [
+												Text('Pilotage', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+												const SizedBox(height: 10),
+												Container(
+													padding: const EdgeInsets.all(14),
+													decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E7EB))),
+													child: Column(
+														crossAxisAlignment: CrossAxisAlignment.start,
+														children: [
+															Text('Statut de la facture', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: const Color(0xFF6B7280))),
+															const SizedBox(height: 6),
+															_invoiceStatusDropdown(invoice, compact: false),
+														],
+													),
+												),
+												const SizedBox(height: 14),
+												Row(
+													children: [
+														Expanded(
+															child: Container(
+																padding: const EdgeInsets.all(14),
+																decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E7EB))),
+																child: Column(
+																	crossAxisAlignment: CrossAxisAlignment.start,
+																	children: [
+																		Text(missionRef == null || missionRef.isEmpty ? 'Total HT' : 'Sous-total mission', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+																		const SizedBox(height: 6),
+																		Text(_formatCurrency(totalHt), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF000091))),
+																	],
+																),
+															),
+														),
+														const SizedBox(width: 12),
+														Expanded(
+															child: Container(
+																padding: const EdgeInsets.all(14),
+																decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E7EB))),
+																child: Column(
+																	crossAxisAlignment: CrossAxisAlignment.start,
+																	children: [
+																		const Text('Total facture', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+																		const SizedBox(height: 6),
+																		Text(_formatCurrency(invoice.invoiceTotalHt > 0 ? invoice.invoiceTotalHt : invoice.amountHt), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+																	],
+																),
+															),
+														),
+													],
+												),
+												const SizedBox(height: 18),
+												Row(
+													children: [
+														Expanded(child: Text('Lignes de la mission', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
+														Text('${lines.length} ligne(s)', style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
+													],
+												),
+												const SizedBox(height: 8),
+												...detailActions,
+												Expanded(child: linesContent),
+											],
+										),
+									),
+								),
+							],
+						),
+					),
+				),
+			),
+		);
+									),
+								IconButton(
+									icon: Icon(collapsed ? Icons.chevron_right : Icons.chevron_left),
+									onPressed: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
+									tooltip: collapsed ? 'Déplier la navigation' : 'Réduire la navigation',
+								),
+							],
+						),
+					),
+					const Divider(height: 1, color: Color(0xFFE5E7EB)),
+					Expanded(
+						child: ListView(
+							padding: const EdgeInsets.symmetric(vertical: 8),
+							children: [
+								_SidebarEntry(
+									icon: Icons.description_outlined,
+									label: 'Préparation',
+									selected: _activeSection == BillingSection.creation,
+									onTap: () => _setActiveSection(BillingSection.creation),
+									collapsed: collapsed,
+								),
+								_SidebarEntry(
+									icon: Icons.receipt_long_outlined,
+									label: 'Factures',
+									selected: _activeSection == BillingSection.invoices,
+									onTap: () => _setActiveSection(BillingSection.invoices),
+									collapsed: collapsed,
+								),
+							],
+						),
+					),
+					const Divider(height: 1, color: Color(0xFFE5E7EB)),
+					Padding(
+						padding: EdgeInsets.fromLTRB(horizontalPadding, 12, horizontalPadding, 16),
+						child: Column(
+							crossAxisAlignment: collapsed ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+							children: [
+								if (!collapsed) ...[
+									const Text('Détail des lignes de facturation', style: TextStyle(fontWeight: FontWeight.w600)),
+									const SizedBox(height: 4),
+								],
+								Text('${_lineEditors.length} ligne(s)', style: const TextStyle(fontWeight: FontWeight.w700)),
+								const SizedBox(height: 8),
+								if (collapsed)
+									IconButton(
+										icon: Icon(_isTableFullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
+										onPressed: _lineEditors.isEmpty ? null : () => _toggleTableFullscreen(!_isTableFullscreen),
+										tooltip: _isTableFullscreen ? 'Quitter le plein écran' : 'Afficher en plein écran',
+									)
+								else
+									OutlinedButton.icon(
+										onPressed: _lineEditors.isEmpty ? null : () => _toggleTableFullscreen(!_isTableFullscreen),
+										icon: Icon(_isTableFullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
+										label: Text(_isTableFullscreen ? 'Quitter le plein écran' : 'Voir en plein écran'),
+									),
+							],
+						),
+					),
+				],
+			),
+		);
+	}
+	*/
 
 class BillingPageArguments {
 	const BillingPageArguments({required this.missions});
+
 	final List<Map<String, dynamic>> missions;
 }
 
@@ -32,6 +293,7 @@ enum BillingSection { creation, invoices }
 
 class BillingPage extends StatefulWidget {
 	const BillingPage({super.key, required this.userRights});
+
 	final UserRights userRights;
 
 	@override
@@ -80,7 +342,6 @@ class _BillingPageState extends State<BillingPage> {
 	pw.Font? _pdfFontBold;
 	pw.MemoryImage? _pdfLogoImage;
 
-	// Invoices table state
 	List<ClientInvoiceSummary> _invoices = [];
 	bool _loadingInvoices = false;
 	int _invoicePage = 1;
@@ -89,6 +350,29 @@ class _BillingPageState extends State<BillingPage> {
 	String _invoiceClientFilter = '';
 	String? _invoiceError;
 	final ScrollController _invoiceScrollController = ScrollController();
+	ClientInvoiceSummary? _selectedInvoice;
+	ClientInvoiceLinesResult? _selectedInvoiceLines;
+	String? _selectedInvoiceMissionRef;
+	final List<_EditableInvoiceLine> _selectedInvoiceLineEditors = [];
+	bool _loadingInvoiceLinesPanel = false;
+	bool _savingInvoiceLinesPanel = false;
+	final Set<String> _updatingInvoiceStatus = <String>{};
+
+	static const List<String> _invoiceStatusLabels = ['Brouillon', 'Validée', 'Envoyée', 'Payée', 'Impayée'];
+	static const Map<String, String> _invoiceStatusToCode = {
+		'Brouillon': 'draft',
+		'Validée': 'validated',
+		'Envoyée': 'sent',
+		'Payée': 'paid',
+		'Impayée': 'unpaid',
+	};
+	static const Map<String, String> _invoiceCodeToLabel = {
+		'draft': 'Brouillon',
+		'validated': 'Validée',
+		'sent': 'Envoyée',
+		'paid': 'Payée',
+		'unpaid': 'Impayée',
+	};
 
 	@override
 	void initState() {
@@ -153,6 +437,8 @@ class _BillingPageState extends State<BillingPage> {
 							_buildLineEditorPanel(spacing),
 						if (_activeSection == BillingSection.creation && _isTableFullscreen)
 							_buildFullscreenOverlay(spacing),
+						if (_activeSection == BillingSection.invoices && _selectedInvoice != null)
+							_buildInvoiceDetailsPanel(spacing),
 					],
 				),
 			),
@@ -195,8 +481,8 @@ class _BillingPageState extends State<BillingPage> {
 									),
 								IconButton(
 									icon: Icon(collapsed ? Icons.chevron_right : Icons.chevron_left),
-									onPressed: () => setState(() => _sidebarCollapsed = !collapsed),
-									tooltip: collapsed ? 'Déplier le menu' : 'Réduire le menu',
+									onPressed: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
+									tooltip: collapsed ? 'Déplier la navigation' : 'Réduire la navigation',
 								),
 							],
 						),
@@ -210,14 +496,14 @@ class _BillingPageState extends State<BillingPage> {
 									icon: Icons.description_outlined,
 									label: 'Préparation',
 									selected: _activeSection == BillingSection.creation,
-									onTap: () => setState(() => _activeSection = BillingSection.creation),
+									onTap: () => _setActiveSection(BillingSection.creation),
 									collapsed: collapsed,
 								),
 								_SidebarEntry(
 									icon: Icons.receipt_long_outlined,
 									label: 'Factures',
 									selected: _activeSection == BillingSection.invoices,
-									onTap: () => setState(() => _activeSection = BillingSection.invoices),
+									onTap: () => _setActiveSection(BillingSection.invoices),
 									collapsed: collapsed,
 								),
 							],
@@ -261,6 +547,28 @@ class _BillingPageState extends State<BillingPage> {
 				return _buildCreationView(spacing);
 			case BillingSection.invoices:
 				return _buildInvoicesView(spacing);
+		}
+	}
+
+	void _setActiveSection(BillingSection section) {
+		if (_activeSection == section) return;
+		setState(() {
+			_activeSection = section;
+			if (section != BillingSection.creation) {
+				_showLinePanel = false;
+				_selectedLineIndex = null;
+			}
+			if (section != BillingSection.invoices) {
+				_selectedInvoice = null;
+				_selectedInvoiceLines = null;
+				_selectedInvoiceMissionRef = null;
+				_selectedInvoiceLineEditors.clear();
+				_loadingInvoiceLinesPanel = false;
+				_savingInvoiceLinesPanel = false;
+			}
+		});
+		if (section == BillingSection.invoices && _invoices.isEmpty && !_loadingInvoices) {
+			unawaited(_loadInvoices(reset: true));
 		}
 	}
 
@@ -327,54 +635,68 @@ class _BillingPageState extends State<BillingPage> {
 				LayoutBuilder(
 					builder: (context, constraints) {
 						final isCompact = constraints.maxWidth < 960;
-						final fieldWidth = isCompact ? constraints.maxWidth : 300.0;
-						final monthWidth = isCompact ? constraints.maxWidth : 220.0;
-						final buttonsWidth = isCompact ? constraints.maxWidth : 260.0;
-						final statWidth = isCompact ? constraints.maxWidth : 170.0;
-						return Wrap(
-							spacing: 16,
-							runSpacing: 6,
-							crossAxisAlignment: WrapCrossAlignment.center,
+						final isWideDesktop = constraints.maxWidth >= 1180;
+						final clientField = _buildToolbarField(
+							label: 'Client',
+							width: isCompact ? constraints.maxWidth : 300.0,
+							child: ClientAutocompleteField(
+								value: _clientInput,
+								hintText: 'Sélectionner un client',
+								onChanged: (value) => setState(() => _clientInput = value),
+								onSelected: (_) => _loadMissionsForClient(),
+								onSubmitted: (_) => _loadMissionsForClient(),
+								trailingBuilder: (context, controller, loading) => [
+									IconButton(
+										icon: _loadingMissions
+											? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+											: const Icon(Icons.search),
+										onPressed: _loadingMissions ? null : _loadMissionsForClient,
+										tooltip: 'Charger les missions',
+									),
+								],
+							),
+						);
+						final monthField = _buildToolbarField(
+							label: 'Mois',
+							width: isCompact ? constraints.maxWidth : 220.0,
+							child: DropdownButtonFormField<DateTime>(
+								initialValue: _selectedMonth,
+								decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.calendar_month)),
+								items: _availableMonths
+									.map((month) => DropdownMenuItem(value: month, child: Text(_monthLabel(month))))
+									.toList(),
+								onChanged: (value) {
+									if (value == null) return;
+									setState(() => _selectedMonth = value);
+									_applyMonthFilter();
+								},
+							),
+						);
+
+						if (isWideDesktop) {
+							return Row(
+								crossAxisAlignment: CrossAxisAlignment.end,
+								children: [
+									clientField,
+									const SizedBox(width: 16),
+									monthField,
+									const SizedBox(width: 16),
+									Expanded(child: _buildToolbarButtons(allowWrap: true)),
+								],
+							);
+						}
+
+						return Column(
+							crossAxisAlignment: CrossAxisAlignment.start,
 							children: [
-								_buildToolbarField(
-									label: 'Client',
-									width: fieldWidth,
-									child: ClientAutocompleteField(
-										value: _clientInput,
-										hintText: 'Sélectionner un client',
-										onChanged: (value) => setState(() => _clientInput = value),
-										onSelected: (_) => _loadMissionsForClient(),
-										onSubmitted: (_) => _loadMissionsForClient(),
-										trailingBuilder: (context, controller, loading) => [
-											IconButton(
-												icon: _loadingMissions
-													? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-													: const Icon(Icons.search),
-												onPressed: _loadingMissions ? null : _loadMissionsForClient,
-												tooltip: 'Charger les missions',
-											),
-										],
-									),
+								Wrap(
+									spacing: 16,
+									runSpacing: 6,
+									crossAxisAlignment: WrapCrossAlignment.center,
+									children: [clientField, monthField],
 								),
-								_buildToolbarField(
-									label: 'Mois',
-									width: monthWidth,
-									child: DropdownButtonFormField<DateTime>(
-										initialValue: _selectedMonth,
-										decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.calendar_month)),
-										items: _availableMonths
-											.map((month) => DropdownMenuItem(value: month, child: Text(_monthLabel(month))))
-											.toList(),
-										onChanged: (value) {
-											if (value == null) return;
-											setState(() => _selectedMonth = value);
-											_applyMonthFilter();
-										},
-									),
-								),
-								_buildToolbarButtons(width: buttonsWidth),
-								SizedBox(width: statWidth, child: _buildToolbarStat('Lignes sélectionnées', _lineEditors.length.toString())),
-								SizedBox(width: statWidth, child: _buildToolbarStat('Total HT', _formatCurrency(_currentTotalHt))),
+								const SizedBox(height: 12),
+								_buildToolbarButtons(allowWrap: !isCompact, width: isCompact ? constraints.maxWidth : null),
 							],
 						);
 					},
@@ -406,65 +728,45 @@ class _BillingPageState extends State<BillingPage> {
 		return SizedBox(width: width, child: content);
 	}
 
-	Widget _buildToolbarButtons({double? width}) {
-		final buttons = Wrap(
-			spacing: 10,
-			runSpacing: 10,
-			alignment: WrapAlignment.end,
-			children: [
-				ElevatedButton.icon(
-					onPressed: _loadingMissions ? null : _loadMissionsForClient,
-					icon: _loadingMissions
-						? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-						: const Icon(Icons.sync),
-					label: Text(_loadingMissions ? 'Chargement...' : 'Charger les missions'),
+	Widget _buildToolbarButtons({required bool allowWrap, double? width}) {
+		final actionButtons = [
+			ElevatedButton.icon(
+				onPressed: _loadingMissions ? null : _loadMissionsForClient,
+				icon: _loadingMissions
+					? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+					: const Icon(Icons.sync),
+				label: Text(_loadingMissions ? 'Chargement...' : 'Charger les missions'),
+			),
+			FilledButton.icon(
+				onPressed: (_lineEditors.isEmpty || _generatingPdf) ? null : _generatePdfFromTable,
+				icon: _generatingPdf
+					? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+					: const Icon(Icons.picture_as_pdf_outlined),
+				label: Text(_generatingPdf ? 'Préparation...' : 'Générer facture (PDF)'),
+			),
+			OutlinedButton.icon(
+				onPressed: _lineEditors.isEmpty ? null : _resetAllLines,
+				icon: const Icon(Icons.restore),
+				label: const Text('Réinitialiser tout'),
+			),
+		];
+
+		final buttons = allowWrap
+			? Wrap(spacing: 10, runSpacing: 10, children: actionButtons)
+			: SingleChildScrollView(
+				scrollDirection: Axis.horizontal,
+				child: Row(
+					mainAxisSize: MainAxisSize.min,
+					children: [
+						for (var index = 0; index < actionButtons.length; index++) ...[
+							actionButtons[index],
+							if (index < actionButtons.length - 1) const SizedBox(width: 10),
+						],
+					],
 				),
-				FilledButton.icon(
-					onPressed: (_lineEditors.isEmpty || _generatingPdf) ? null : _generatePdfFromTable,
-					icon: _generatingPdf
-						? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-						: const Icon(Icons.picture_as_pdf_outlined),
-					label: Text(_generatingPdf ? 'Préparation...' : 'Générer facture en PDF'),
-				),
-				OutlinedButton.icon(
-					onPressed: () {
-						Navigator.pushNamed(
-							context,
-							'/missions-table',
-							arguments: const MissionsTablePageArguments(showNewMissionForm: true),
-						);
-					},
-					icon: const Icon(Icons.add_circle_outline),
-					label: const Text('Nouvelle mission'),
-				),
-				OutlinedButton.icon(
-					onPressed: _lineEditors.isEmpty ? null : _resetAllLines,
-					icon: const Icon(Icons.restore),
-					label: const Text('Réinitialiser tout'),
-				),
-			],
-		);
+			);
 		if (width == null) return buttons;
 		return SizedBox(width: width, child: buttons);
-	}
-
-	Widget _buildToolbarStat(String label, String value) {
-		return Container(
-			padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-			decoration: BoxDecoration(
-				color: Colors.white,
-				borderRadius: BorderRadius.circular(8),
-				border: Border.all(color: const Color(0xFFE5E7EB)),
-			),
-			child: Column(
-				crossAxisAlignment: CrossAxisAlignment.start,
-				children: [
-					Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
-					const SizedBox(height: 2),
-					Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-				],
-			),
-		);
 	}
 
 	Widget _buildInvoiceCard(double spacing) {
@@ -547,21 +849,92 @@ class _BillingPageState extends State<BillingPage> {
 			onSelectChanged: (_) => _openLineEditor(index),
 			cells: [
 				_buildSelectableCell(ref.isEmpty ? '-' : ref, width: columnWidths[0]),
-				_buildDesignationCell(editor, columnWidths[1]),
-				_buildSelectableCell(_formatTvaValue(line.tvaRate), width: columnWidths[2], align: TextAlign.center),
-				_buildSelectableCell(_formatCurrency(line.unitPrice), width: columnWidths[3], align: TextAlign.right),
-				_buildSelectableCell(_formatQuantity(line.quantity), width: columnWidths[4], align: TextAlign.right),
+				_buildEditableDesignationCell(index, columnWidths[1]),
+				_buildTvaDropdownCell(index, columnWidths[2]),
+				_buildEditableNumberCell(
+					label: 'P.U. HT',
+					index: index,
+					width: columnWidths[3],
+					value: line.unitPrice,
+					fractionDigits: 2,
+					onChanged: (value) {
+						if (value != null && value >= 0) {
+							_updateLineFields(index, unitPrice: value);
+						}
+					},
+				),
+				_buildEditableNumberCell(
+					label: 'Quantité',
+					index: index,
+					width: columnWidths[4],
+					value: line.quantity,
+					fractionDigits: 3,
+					onChanged: (value) {
+						if (value != null && value > 0) {
+							_updateLineFields(index, quantity: value);
+						}
+					},
+				),
 				_buildSelectableCell(_formatCurrency(line.totalHt), width: columnWidths[5], align: TextAlign.right),
 			],
 		);
 	}
 
-	DataCell _buildDesignationCell(_EditableInvoiceLine editor, double width) {
-		final designation = editor.currentLine.designation.trim().isEmpty ? '---' : editor.currentLine.designation;
+	DataCell _buildEditableDesignationCell(int index, double width) {
+		final editor = _lineEditors[index];
+		return DataCell(
+			_InlineEditableTextCell(
+				key: ValueKey('designation_$index'),
+				width: width,
+				text: editor.currentLine.designation,
+				maxLines: 4,
+				onChanged: (value) => _updateLineFields(index, designation: value),
+			),
+		);
+	}
+
+	DataCell _buildTvaDropdownCell(int index, double width) {
+		final line = _lineEditors[index].currentLine;
+		final current = _tvaOptionFor(line.tvaRate) ?? _tvaRates.first;
 		return DataCell(
 			SizedBox(
 				width: width,
-				child: SelectableText(designation, style: const TextStyle(height: 1.35)),
+				child: DropdownButtonHideUnderline(
+					child: DropdownButton<double>(
+						value: current,
+						isDense: true,
+						items: _tvaRates
+							.map((rate) => DropdownMenuItem<double>(
+								value: rate,
+								child: Text('${rate.toStringAsFixed(rate == rate.roundToDouble() ? 0 : 2)} %'),
+							))
+							.toList(),
+						onChanged: (value) {
+							if (value != null) {
+								_updateLineFields(index, tvaRate: value);
+							}
+						},
+					),
+				),
+			),
+		);
+	}
+
+	DataCell _buildEditableNumberCell({
+		required String label,
+		required int index,
+		required double width,
+		required double value,
+		required int fractionDigits,
+		required ValueChanged<double?> onChanged,
+	}) {
+		return DataCell(
+			_InlineEditableNumberCell(
+				key: ValueKey('$label-$index'),
+				width: width,
+				value: value,
+				fractionDigits: fractionDigits,
+				onNumberChanged: onChanged,
 			),
 		);
 	}
@@ -636,6 +1009,8 @@ class _BillingPageState extends State<BillingPage> {
 			return const Center(child: Text('Aucune facture trouvée. Modifiez les filtres pour relancer la recherche.'));
 		}
 		final totalPages = (_invoiceTotal / _invoicePageSize).ceil().clamp(1, 9999);
+		final selectedInvoiceNumber = _selectedInvoice?.invoiceNumber;
+		final selectedMissionRef = _selectedInvoiceMissionRef;
 		return Column(
 			children: [
 				Expanded(
@@ -650,24 +1025,31 @@ class _BillingPageState extends State<BillingPage> {
 								headingRowHeight: 40,
 								columns: const [
 									DataColumn(label: Text('Facture')),
+									DataColumn(label: Text('Réf mission')),
 									DataColumn(label: Text('Client')),
 									DataColumn(label: Text('Statut')),
 									DataColumn(label: Text('Montant HT'), numeric: true),
 									DataColumn(label: Text('Date')), 
 								],
 								rows: _invoices
-									.map(
-										(invoice) => DataRow(
+									.map((invoice) {
+										final billedLabel = invoice.billedAt != null ? DateFormat('dd/MM/yyyy').format(invoice.billedAt!) : '-';
+										final amount = invoice.amountHt > 0 ? invoice.amountHt : invoice.invoiceTotalHt;
+										final isSelected = invoice.invoiceNumber == selectedInvoiceNumber && invoice.missionRef == selectedMissionRef;
+										return DataRow(
+											selected: isSelected,
+											onSelectChanged: (_) => _openInvoiceDetails(invoice, missionRef: invoice.missionRef),
 											cells: [
 												DataCell(Text(invoice.invoiceNumber)),
+												DataCell(_buildInvoiceMissionCell(invoice)),
 												DataCell(Text(invoice.clientName.isEmpty ? '-' : invoice.clientName)),
-												DataCell(Text(invoice.statusLabel.isEmpty ? invoice.statusCode : invoice.statusLabel)),
-												DataCell(Text(_formatCurrency(invoice.invoiceTotalHt > 0 ? invoice.invoiceTotalHt : invoice.amountHt))),
-												DataCell(Text(invoice.billedAt != null ? DateFormat('dd/MM/yyyy').format(invoice.billedAt!) : '-')),
+												DataCell(SizedBox(width: 160, child: _invoiceStatusDropdown(invoice))),
+												DataCell(Align(alignment: Alignment.centerRight, child: Text(_formatCurrency(amount)))),
+												DataCell(Text(billedLabel)),
 											],
-										),
-								)
-								.toList(),
+										);
+									})
+									.toList(),
 							),
 						),
 					),
@@ -701,6 +1083,58 @@ class _BillingPageState extends State<BillingPage> {
 					],
 				),
 			],
+		);
+	}
+
+	Widget _invoiceStatusDropdown(ClientInvoiceSummary invoice, {bool compact = true}) {
+		final label = _invoiceStatusLabelFor(invoice);
+		final isUpdating = _isInvoiceStatusBeingUpdated(invoice.invoiceNumber);
+		final dropdown = DropdownButtonHideUnderline(
+			child: DropdownButton<String>(
+				value: label,
+				isDense: compact,
+				isExpanded: true,
+				onChanged: isUpdating ? null : (value) {
+					if (value == null || value == label) return;
+					_changeInvoiceStatus(invoice, value);
+				},
+				items: _invoiceStatusLabels
+					.map((status) => DropdownMenuItem<String>(value: status, child: Text(status)))
+					.toList(),
+			),
+		);
+		return Stack(
+			alignment: Alignment.centerRight,
+			children: [
+				dropdown,
+				if (isUpdating)
+					const Positioned(
+						right: 4,
+						child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+					),
+			],
+		);
+	}
+
+	Widget _buildInvoiceMissionCell(ClientInvoiceSummary invoice) {
+		final missionRef = invoice.missionRef?.trim() ?? '';
+		if (missionRef.isEmpty) {
+			return const Text('-');
+		}
+		return InkWell(
+			onTap: () => _openInvoiceDetails(invoice, missionRef: missionRef),
+			borderRadius: BorderRadius.circular(6),
+			child: Padding(
+				padding: const EdgeInsets.symmetric(vertical: 4),
+				child: Text(
+					missionRef,
+					style: const TextStyle(
+						color: Color(0xFF000091),
+						fontWeight: FontWeight.w600,
+						decoration: TextDecoration.underline,
+					),
+				),
+			),
 		);
 	}
 
@@ -805,6 +1239,538 @@ class _BillingPageState extends State<BillingPage> {
 				),
 			),
 		);
+	}
+
+	Widget _buildInvoiceDetailsPanel(double spacing) {
+		final invoice = _selectedInvoice;
+		if (invoice == null) return const SizedBox.shrink();
+		final missionRef = _selectedInvoiceMissionRef ?? invoice.missionRef;
+		final isLocked = _isInvoiceLockedForEdition(invoice);
+		final billedAtLabel = invoice.billedAt != null ? DateFormat('dd/MM/yyyy').format(invoice.billedAt!) : 'Non émise';
+		final lines = _selectedInvoiceLineEditors.map((editor) => editor.currentLine).toList(growable: false);
+		final totalHt = lines.isNotEmpty ? _selectedMissionTotalHt : (_selectedInvoiceLines?.totalHt ?? invoice.amountHt);
+
+		final chips = <Widget>[
+			Container(
+				padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+				decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999), border: Border.all(color: const Color(0xFFD6DAE6))),
+				child: Text('Émise le $billedAtLabel', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+			),
+			if (missionRef != null && missionRef.trim().isNotEmpty)
+				Container(
+					padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+					decoration: BoxDecoration(color: const Color(0xFFE8EEFF), borderRadius: BorderRadius.circular(999)),
+					child: Text('Mission $missionRef', style: const TextStyle(color: Color(0xFF000091), fontWeight: FontWeight.w700, fontSize: 12)),
+				),
+			Container(
+				padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+				decoration: BoxDecoration(color: isLocked ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF3), borderRadius: BorderRadius.circular(999)),
+				child: Text(_invoiceStatusLabelFor(invoice), style: TextStyle(color: isLocked ? const Color(0xFF92400E) : const Color(0xFF166534), fontWeight: FontWeight.w700, fontSize: 12)),
+			),
+		];
+
+		final actions = <Widget>[];
+		if (isLocked) {
+			actions.add(
+				Container(
+					width: double.infinity,
+					margin: const EdgeInsets.only(bottom: 12),
+					padding: const EdgeInsets.all(10),
+					decoration: BoxDecoration(
+						color: const Color(0xFFFEF3C7),
+						borderRadius: BorderRadius.circular(8),
+						border: Border.all(color: const Color(0xFFF59E0B)),
+					),
+					child: const Text('Facture payée : les lignes du détail sont verrouillées.'),
+				),
+			);
+		}
+		if (!isLocked && missionRef != null && missionRef.trim().isNotEmpty) {
+			actions.add(
+				Padding(
+					padding: const EdgeInsets.only(bottom: 12),
+					child: Row(
+						children: [
+							OutlinedButton.icon(
+								onPressed: _selectedInvoiceLineEditors.isEmpty ? null : _resetSelectedInvoiceLines,
+								icon: const Icon(Icons.restore),
+								label: const Text('Réinitialiser'),
+							),
+							const SizedBox(width: 12),
+							Expanded(
+								child: FilledButton.icon(
+									onPressed: _savingInvoiceLinesPanel || !_hasSelectedInvoiceLineChanges ? null : _saveSelectedInvoiceLines,
+									icon: _savingInvoiceLinesPanel
+										? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+										: const Icon(Icons.save_outlined),
+									label: Text(_savingInvoiceLinesPanel ? 'Enregistrement...' : 'Enregistrer les lignes'),
+								),
+							),
+						],
+					),
+				),
+			);
+		}
+
+		final linesContent = _loadingInvoiceLinesPanel
+			? const Center(child: CircularProgressIndicator())
+			: missionRef == null || missionRef.trim().isEmpty
+				? const Center(child: Text('Aucune référence mission disponible pour cette facture.'))
+				: lines.isEmpty
+					? const Center(child: Text('Aucune ligne trouvée pour cette mission.'))
+					: Scrollbar(
+						thumbVisibility: true,
+						child: ListView.separated(
+							itemCount: lines.length,
+							separatorBuilder: (_, __) => const Divider(height: 20),
+							itemBuilder: (context, index) => _buildStoredInvoiceLineTile(index, isLocked: isLocked),
+						),
+					);
+
+		return Align(
+			alignment: Alignment.centerRight,
+			child: ConstrainedBox(
+				constraints: const BoxConstraints(maxWidth: 470),
+				child: Material(
+					elevation: 8,
+					borderRadius: const BorderRadius.only(topLeft: Radius.circular(18), bottomLeft: Radius.circular(18)),
+					child: Container(
+						color: Colors.white,
+						child: Column(
+							crossAxisAlignment: CrossAxisAlignment.start,
+							children: [
+								Container(
+									padding: EdgeInsets.fromLTRB(spacing, spacing, spacing, spacing - 2),
+									decoration: const BoxDecoration(
+										color: Color(0xFFF4F6FB),
+										borderRadius: BorderRadius.only(topLeft: Radius.circular(18)),
+										border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+									),
+									child: Column(
+										crossAxisAlignment: CrossAxisAlignment.start,
+										children: [
+											Row(
+												children: [
+													Container(
+														padding: const EdgeInsets.all(10),
+														decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+														child: const Icon(Icons.account_tree_outlined, color: Color(0xFF000091)),
+													),
+													const SizedBox(width: 12),
+													Expanded(
+														child: Column(
+															crossAxisAlignment: CrossAxisAlignment.start,
+															children: [
+																Text('Niveau 2 • Détail facture', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: const Color(0xFF000091), fontWeight: FontWeight.w700)),
+																const SizedBox(height: 4),
+																Text('Facture ${invoice.invoiceNumber}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+																const SizedBox(height: 2),
+																Text(invoice.clientName.isEmpty ? 'Client non renseigné' : invoice.clientName, style: const TextStyle(color: Color(0xFF6B7280))),
+															],
+														),
+													),
+													IconButton(onPressed: _closeInvoiceDetails, icon: const Icon(Icons.close)),
+												],
+											),
+											const SizedBox(height: 12),
+											Wrap(spacing: 8, runSpacing: 8, children: chips),
+										],
+									),
+								),
+								Expanded(
+									child: Padding(
+										padding: EdgeInsets.fromLTRB(spacing, 18, spacing, spacing),
+										child: Column(
+											crossAxisAlignment: CrossAxisAlignment.start,
+											children: [
+												Text('Pilotage', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+												const SizedBox(height: 10),
+												Container(
+													padding: const EdgeInsets.all(14),
+													decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E7EB))),
+													child: Column(
+														crossAxisAlignment: CrossAxisAlignment.start,
+														children: [
+															Text('Statut de la facture', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: const Color(0xFF6B7280))),
+															const SizedBox(height: 6),
+															_invoiceStatusDropdown(invoice, compact: false),
+														],
+													),
+												),
+												const SizedBox(height: 14),
+												Row(
+													children: [
+														Expanded(
+															child: Container(
+																padding: const EdgeInsets.all(14),
+																decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E7EB))),
+																child: Column(
+																	crossAxisAlignment: CrossAxisAlignment.start,
+																	children: [
+																		Text(missionRef == null || missionRef.isEmpty ? 'Total HT' : 'Sous-total mission', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+																		const SizedBox(height: 6),
+																		Text(_formatCurrency(totalHt), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF000091))),
+																	],
+																),
+															),
+														),
+														const SizedBox(width: 12),
+														Expanded(
+															child: Container(
+																padding: const EdgeInsets.all(14),
+																decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E7EB))),
+																child: Column(
+																	crossAxisAlignment: CrossAxisAlignment.start,
+																	children: [
+																		const Text('Total facture', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+																		const SizedBox(height: 6),
+																		Text(_formatCurrency(invoice.invoiceTotalHt > 0 ? invoice.invoiceTotalHt : invoice.amountHt), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+																	],
+																),
+															),
+														),
+													],
+												),
+												const SizedBox(height: 18),
+												Row(
+													children: [
+														Expanded(child: Text('Lignes de la mission', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
+														Text('${lines.length} ligne(s)', style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
+													],
+												),
+												const SizedBox(height: 8),
+												...actions,
+												Expanded(child: linesContent),
+											],
+										),
+									),
+								),
+							],
+						),
+					),
+				),
+			),
+		);
+	}
+
+	Widget _buildInvoiceLineTile(InvoiceLine line) {
+		final designation = line.designation.trim().isEmpty ? 'Ligne sans libellé' : line.designation.trim();
+		final notes = line.notes?.trim();
+		return Column(
+			crossAxisAlignment: CrossAxisAlignment.start,
+			children: [
+				Text(designation, style: const TextStyle(fontWeight: FontWeight.w600)),
+				const SizedBox(height: 4),
+				Text(
+					'Qté ${_formatQuantity(line.quantity)} • P.U. HT ${_formatCurrency(line.unitPrice)}',
+					style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+				),
+				const SizedBox(height: 2),
+				Text('Total HT ${_formatCurrency(line.totalHt)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+				if (notes != null && notes.isNotEmpty) ...[
+					const SizedBox(height: 6),
+					Text(notes, style: const TextStyle(color: Color(0xFF4B5563), fontSize: 12)),
+				],
+			],
+		);
+	}
+
+	Widget _buildStoredInvoiceLineTile(int index, {required bool isLocked}) {
+		final editor = _selectedInvoiceLineEditors[index];
+		final line = editor.currentLine;
+		if (isLocked) {
+			return _buildInvoiceLineTile(line);
+		}
+		return Container(
+			padding: const EdgeInsets.all(12),
+			decoration: BoxDecoration(
+				color: const Color(0xFFF9FAFB),
+				borderRadius: BorderRadius.circular(10),
+				border: Border.all(color: const Color(0xFFE5E7EB)),
+			),
+			child: Column(
+				crossAxisAlignment: CrossAxisAlignment.start,
+				children: [
+					Row(
+						children: [
+							Expanded(child: Text('Ligne ${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700))),
+							TextButton.icon(
+								onPressed: () => _resetStoredInvoiceLine(index),
+								icon: const Icon(Icons.undo, size: 18),
+								label: const Text('Annuler'),
+							),
+						],
+					),
+					const SizedBox(height: 8),
+					const Text('Désignation', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+					const SizedBox(height: 4),
+					_InlineEditableTextCell(
+						key: ValueKey('detail-designation-$index'),
+						width: double.infinity,
+						text: line.designation,
+						onChanged: (value) => _updateStoredInvoiceLine(index, designation: value),
+					),
+					const SizedBox(height: 10),
+					const Text('TVA', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+					const SizedBox(height: 4),
+					DropdownButtonFormField<double>(
+						initialValue: _tvaOptionFor(line.tvaRate),
+						items: _tvaRates
+							.map((rate) => DropdownMenuItem(value: rate, child: Text('${rate.toStringAsFixed(rate == rate.roundToDouble() ? 0 : 2)} %')))
+							.toList(),
+						onChanged: (value) => _updateStoredInvoiceLine(index, tvaRate: value ?? 0),
+						decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+					),
+					const SizedBox(height: 10),
+					Row(
+						children: [
+							Expanded(
+								child: Column(
+									crossAxisAlignment: CrossAxisAlignment.start,
+									children: [
+										const Text('P.U. HT', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+										const SizedBox(height: 4),
+										_InlineEditableNumberCell(
+											key: ValueKey('detail-unit-price-$index'),
+											width: double.infinity,
+											value: line.unitPrice,
+											onNumberChanged: (value) => _updateStoredInvoiceLine(index, unitPrice: value),
+										),
+									],
+								),
+							),
+							const SizedBox(width: 10),
+							Expanded(
+								child: Column(
+									crossAxisAlignment: CrossAxisAlignment.start,
+									children: [
+										const Text('Qté', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+										const SizedBox(height: 4),
+										_InlineEditableNumberCell(
+											key: ValueKey('detail-quantity-$index'),
+											width: double.infinity,
+											value: line.quantity,
+											fractionDigits: 2,
+											onNumberChanged: (value) => _updateStoredInvoiceLine(index, quantity: value),
+										),
+									],
+								),
+							),
+						],
+					),
+					const SizedBox(height: 10),
+					const Text('Notes', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+					const SizedBox(height: 4),
+					_InlineEditableTextCell(
+						key: ValueKey('detail-notes-$index'),
+						width: double.infinity,
+						text: line.notes ?? '',
+						onChanged: (value) => _updateStoredInvoiceLine(index, notes: value),
+						maxLines: 2,
+					),
+					const SizedBox(height: 10),
+					Text('Total HT ${_formatCurrency(line.totalHt)}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF000091))),
+				],
+			),
+		);
+	}
+
+	void _openInvoiceDetails(ClientInvoiceSummary invoice, {String? missionRef}) {
+		final effectiveMissionRef = missionRef ?? invoice.missionRef;
+		final alreadySelected = _selectedInvoice?.invoiceNumber == invoice.invoiceNumber && _selectedInvoiceMissionRef == effectiveMissionRef;
+		setState(() {
+			_selectedInvoice = invoice;
+			_selectedInvoiceMissionRef = effectiveMissionRef;
+			if (!alreadySelected) {
+				_loadingInvoiceLinesPanel = true;
+				_selectedInvoiceLineEditors.clear();
+				_selectedInvoiceLines = null;
+			}
+		});
+		if (!alreadySelected) {
+			_loadInvoiceLines(invoice, missionRef: effectiveMissionRef);
+		}
+	}
+
+	void _closeInvoiceDetails() {
+		setState(() {
+			_selectedInvoice = null;
+			_selectedInvoiceLines = null;
+			_selectedInvoiceMissionRef = null;
+			_selectedInvoiceLineEditors.clear();
+			_loadingInvoiceLinesPanel = false;
+			_savingInvoiceLinesPanel = false;
+		});
+	}
+
+	Future<void> _loadInvoiceLines(ClientInvoiceSummary invoice, {String? missionRef}) async {
+		try {
+			final result = await BillingService.fetchInvoiceLines(invoice.invoiceNumber, missionRef: missionRef);
+			if (!mounted) return;
+			if (_selectedInvoice?.invoiceNumber != invoice.invoiceNumber || _selectedInvoiceMissionRef != missionRef) return;
+			setState(() {
+				_selectedInvoiceLines = result;
+				_selectedInvoiceLineEditors
+					..clear()
+					..addAll(
+						result.lines.map(
+							(line) => _EditableInvoiceLine(
+								mission: null,
+								originalLine: line.copy(),
+								currentLine: line.copy(),
+							),
+						),
+					);
+				_loadingInvoiceLinesPanel = false;
+			});
+		} catch (error, stack) {
+			debugPrint('Failed to load invoice lines: $error');
+			debugPrint(stack.toString());
+			if (!mounted) return;
+			setState(() => _loadingInvoiceLinesPanel = false);
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text('Impossible de charger les lignes de ${invoice.invoiceNumber}.')),
+			);
+		}
+	}
+
+	Future<void> _saveSelectedInvoiceLines() async {
+		final invoice = _selectedInvoice;
+		final missionRef = _selectedInvoiceMissionRef;
+		if (invoice == null || missionRef == null || missionRef.trim().isEmpty) return;
+		setState(() => _savingInvoiceLinesPanel = true);
+		try {
+			final result = await BillingService.updateInvoiceLines(
+				invoiceNumber: invoice.invoiceNumber,
+				missionRef: missionRef,
+				lines: _selectedInvoiceLineEditors.map((editor) => editor.currentLine).toList(growable: false),
+				userId: AuthManager.userId,
+				userName: AuthManager.userFullName,
+			);
+			if (!mounted) return;
+			setState(() {
+				_selectedInvoiceLines = result;
+				_selectedInvoiceLineEditors
+					..clear()
+					..addAll(
+						result.lines.map(
+							(line) => _EditableInvoiceLine(
+								mission: null,
+								originalLine: line.copy(),
+								currentLine: line.copy(),
+							),
+						),
+					);
+				_savingInvoiceLinesPanel = false;
+			});
+			await _loadInvoices();
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(
+				const SnackBar(content: Text('Les lignes de facture ont été mises à jour.')),
+			);
+		} catch (error, stack) {
+			debugPrint('Failed to update invoice lines: $error');
+			debugPrint(stack.toString());
+			if (!mounted) return;
+			setState(() => _savingInvoiceLinesPanel = false);
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+			);
+		}
+	}
+
+	void _updateStoredInvoiceLine(
+		int index, {
+		String? designation,
+		double? quantity,
+		double? unitPrice,
+		double? tvaRate,
+		String? notes,
+	}) {
+		if (index < 0 || index >= _selectedInvoiceLineEditors.length) return;
+		setState(() {
+			final line = _selectedInvoiceLineEditors[index].currentLine;
+			if (designation != null) {
+				line.designation = designation;
+			}
+			if (quantity != null && quantity > 0) {
+				line.quantity = quantity;
+			}
+			if (unitPrice != null && unitPrice >= 0) {
+				line.unitPrice = unitPrice;
+			}
+			if (tvaRate != null && tvaRate >= 0) {
+				line.tvaRate = tvaRate;
+			}
+			if (notes != null) {
+				line.notes = notes.trim().isEmpty ? null : notes;
+			}
+		});
+	}
+
+	void _resetStoredInvoiceLine(int index) {
+		if (index < 0 || index >= _selectedInvoiceLineEditors.length) return;
+		setState(() => _selectedInvoiceLineEditors[index].reset());
+	}
+
+	void _resetSelectedInvoiceLines() {
+		setState(() {
+			for (final editor in _selectedInvoiceLineEditors) {
+				editor.reset();
+			}
+		});
+	}
+
+	Future<void> _changeInvoiceStatus(ClientInvoiceSummary invoice, String newLabel) async {
+		final newCode = _invoiceStatusCodeForLabel(newLabel);
+		final updated = invoice.copyWith(statusCode: newCode, statusLabel: newLabel);
+		final invoiceNumber = invoice.invoiceNumber;
+		setState(() {
+			_updatingInvoiceStatus.add(invoiceNumber);
+			_replaceInvoice(invoiceNumber, updated);
+			if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+				_selectedInvoice = updated;
+			}
+		});
+		try {
+			await BillingService.updateInvoiceStatus(
+				invoiceNumber: invoiceNumber,
+				statusCode: newCode,
+				statusLabel: newLabel,
+				userId: AuthManager.userId,
+				userName: AuthManager.userFullName,
+			);
+		} catch (error, stack) {
+			debugPrint('Failed to update invoice status: $error');
+			debugPrint(stack.toString());
+			if (!mounted) return;
+			setState(() {
+				_replaceInvoice(invoiceNumber, invoice);
+				if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+					_selectedInvoice = invoice;
+				}
+			});
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text('Mise à jour du statut impossible. Vérifiez votre connexion.')),
+			);
+		} finally {
+			if (mounted) {
+				setState(() => _updatingInvoiceStatus.remove(invoiceNumber));
+			}
+		}
+	}
+
+	void _replaceInvoice(String invoiceNumber, ClientInvoiceSummary replacement) {
+		for (var index = 0; index < _invoices.length; index++) {
+			if (_invoices[index].invoiceNumber == invoiceNumber) {
+				_invoices[index] = _invoices[index].copyWith(
+					statusCode: replacement.statusCode,
+					statusLabel: replacement.statusLabel,
+					invoiceTotalHt: replacement.invoiceTotalHt,
+					amountHt: _invoices[index].amountHt,
+				);
+			}
+		}
 	}
 
 	Widget _buildLineEditorPanel(double spacing) {
@@ -964,6 +1930,38 @@ class _BillingPageState extends State<BillingPage> {
 		_scheduleDraftSave();
 	}
 
+	void _updateLineFields(int index, {String? designation, double? quantity, double? unitPrice, double? tvaRate}) {
+		if (index < 0 || index >= _lineEditors.length) return;
+		var changed = false;
+		setState(() {
+			final line = _lineEditors[index].currentLine;
+			if (designation != null && designation != line.designation) {
+				line.designation = designation;
+				changed = true;
+			}
+			if (quantity != null && quantity > 0 && quantity != line.quantity) {
+				line.quantity = quantity;
+				changed = true;
+			}
+			if (unitPrice != null && unitPrice >= 0 && unitPrice != line.unitPrice) {
+				line.unitPrice = unitPrice;
+				changed = true;
+			}
+			if (tvaRate != null && tvaRate >= 0 && tvaRate != line.tvaRate) {
+				line.tvaRate = tvaRate;
+				changed = true;
+			}
+		});
+		if (!changed) return;
+		if (_selectedLineIndex == index) {
+			final line = _lineEditors[index].currentLine;
+			_lineDesignationCtrl?.text = line.designation;
+			_lineQuantityCtrl?.text = _quantityFormat.format(line.quantity);
+			_lineUnitPriceCtrl?.text = line.unitPrice.toStringAsFixed(2);
+		}
+		_scheduleDraftSave();
+	}
+
 	void _updateSelectedLine({String? designation, double? quantity, double? unitPrice, double? tvaRate, String? notes}) {
 		final index = _selectedLineIndex;
 		if (index == null || index < 0 || index >= _lineEditors.length) return;
@@ -1059,9 +2057,9 @@ class _BillingPageState extends State<BillingPage> {
 				.toList();
 			setState(() {
 				_allClientMissions = filtered;
-				_applyMonthFilter();
 				_loadingMissions = false;
 			});
+			_applyMonthFilter();
 			if (filtered.isEmpty) {
 				ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucune mission trouvée pour ce client sur les 12 derniers mois.')));
 			}
@@ -1186,31 +2184,21 @@ class _BillingPageState extends State<BillingPage> {
 								3: pw.Alignment.centerRight,
 								4: pw.Alignment.centerRight,
 							},
-							columnWidths: {
-								0: const pw.FlexColumnWidth(3.2),
-								1: const pw.FlexColumnWidth(1.0),
-								2: const pw.FlexColumnWidth(1.2),
-								3: const pw.FlexColumnWidth(1.0),
-								4: const pw.FlexColumnWidth(1.2),
-							},
+							),
+						],
 						),
-						pw.SizedBox(height: 12),
-						pw.Align(
-							alignment: pw.Alignment.centerRight,
-							child: pw.Text('Total HT : ${_formatCurrency(_currentTotalHt)}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: accent)),
-						),
-						pw.SizedBox(height: 6),
-						pw.Text('Document généré le ${DateFormat('dd/MM/yyyy HH:mm').format(now)}', style: pw.TextStyle(fontSize: 9, color: PdfColor.fromHex('#6B7280'))),
-					],
-					),
-				);
-			final Uint8List bytes = await doc.save();
-			final filename = 'facture_${DateFormat('yyyyMMdd_HHmmss').format(now)}.pdf';
-			if (canSavePdfToDownloads) {
-				await savePdfToDownloads(bytes, filename);
-			} else {
-				await Printing.layoutPdf(name: filename, onLayout: (_) async => bytes);
-			}
+					);
+					final bytes = await doc.save();
+					final timestamp = DateFormat('yyyyMMdd_HHmm').format(now);
+					final sanitizedClient = _currentClientName.trim().isEmpty
+						? 'client'
+						: _currentClientName.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
+					final filename = 'Facture_${sanitizedClient}_$timestamp.pdf';
+					if (canSavePdfToDownloads) {
+						await savePdfToDownloads(bytes, filename);
+					} else {
+						await Printing.layoutPdf(name: filename, onLayout: (_) async => bytes);
+					}
 		} catch (e, stack) {
 			debugPrint('PDF generation failed: $e');
 			debugPrint(stack.toString());
@@ -1229,7 +2217,8 @@ class _BillingPageState extends State<BillingPage> {
 		if (_pdfLogoImage == null) {
 			try {
 				final data = await rootBundle.load('assets/logo.png');
-				_pdfLogoImage = pw.MemoryImage(data.buffer.asUint8List());
+				final Uint8List bytes = data.buffer.asUint8List();
+				_pdfLogoImage = pw.MemoryImage(bytes);
 			} catch (_) {
 				_pdfLogoImage = null;
 			}
@@ -1335,11 +2324,38 @@ class _BillingPageState extends State<BillingPage> {
 				clientName: _invoiceClientFilter.isEmpty ? null : _invoiceClientFilter,
 			);
 			if (!mounted) return;
+			final previouslySelected = _selectedInvoice;
+			final selectedMissionRef = _selectedInvoiceMissionRef;
 			setState(() {
-				_invoices = result.invoices;
+				_invoices
+					..clear()
+					..addAll(result.invoices);
 				_invoiceTotal = result.total;
 				_invoicePage = result.page;
 				_loadingInvoices = false;
+				if (previouslySelected != null) {
+					ClientInvoiceSummary? refreshed;
+					for (final invoice in result.invoices) {
+						if (invoice.invoiceNumber == previouslySelected.invoiceNumber && invoice.missionRef == selectedMissionRef) {
+							refreshed = invoice;
+							break;
+						}
+					}
+					refreshed ??= result.invoices.cast<ClientInvoiceSummary?>().firstWhere(
+						(invoice) => invoice?.invoiceNumber == previouslySelected.invoiceNumber,
+						orElse: () => null,
+					);
+					if (refreshed != null) {
+						_selectedInvoice = refreshed;
+						_selectedInvoiceMissionRef = refreshed.missionRef;
+					} else {
+						_selectedInvoice = null;
+						_selectedInvoiceLines = null;
+						_selectedInvoiceMissionRef = null;
+						_selectedInvoiceLineEditors.clear();
+						_loadingInvoiceLinesPanel = false;
+					}
+				}
 			});
 		} catch (error) {
 			if (!mounted) return;
@@ -1358,6 +2374,53 @@ class _BillingPageState extends State<BillingPage> {
 				_showLinePanel = false;
 			}
 		});
+	}
+
+	String _invoiceStatusLabelFor(ClientInvoiceSummary invoice) {
+		final code = invoice.statusCode.trim().toLowerCase();
+		if (_invoiceCodeToLabel.containsKey(code)) {
+			return _invoiceCodeToLabel[code]!;
+		}
+		final label = invoice.statusLabel.trim();
+		if (label.isNotEmpty) {
+			return label;
+		}
+		return 'Brouillon';
+	}
+
+	String _invoiceStatusCodeForLabel(String label) {
+		return _invoiceStatusToCode[label] ?? 'draft';
+	}
+
+	bool _isInvoiceStatusBeingUpdated(String invoiceNumber) => _updatingInvoiceStatus.contains(invoiceNumber);
+
+	bool get _hasSelectedInvoiceLineChanges {
+		for (final editor in _selectedInvoiceLineEditors) {
+			if (!_invoiceLinesEqual(editor.originalLine, editor.currentLine)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	double get _selectedMissionTotalHt => _selectedInvoiceLineEditors.fold(0, (sum, editor) => sum + editor.currentLine.totalHt);
+
+	bool _isInvoiceLockedForEdition(ClientInvoiceSummary invoice) {
+		final statusCode = invoice.statusCode.trim().toLowerCase();
+		if (statusCode == 'paid') {
+			return true;
+		}
+		final statusLabel = _invoiceStatusLabelFor(invoice).trim().toLowerCase();
+		return statusLabel == 'payée';
+	}
+
+	bool _invoiceLinesEqual(InvoiceLine left, InvoiceLine right) {
+		return left.missionRef == right.missionRef &&
+			left.designation == right.designation &&
+			left.unitPrice == right.unitPrice &&
+			left.quantity == right.quantity &&
+			left.tvaRate == right.tvaRate &&
+			(left.notes ?? '') == (right.notes ?? '');
 	}
 
 	String get _currentClientName => _clientInput.trim();
@@ -1717,7 +2780,7 @@ class _EditableInvoiceLine {
 	final InvoiceLine originalLine;
 	InvoiceLine currentLine;
 
-	String? get missionRef => mission?['reference_devis']?.toString() ?? mission?['reference']?.toString();
+	String? get missionRef => mission?['reference_devis']?.toString() ?? mission?['reference']?.toString() ?? currentLine.missionRef;
 
 	void reset() {
 		currentLine = originalLine.copy();
@@ -1790,6 +2853,167 @@ class _SavingDraftBadge extends StatelessWidget {
 					SizedBox(width: 8),
 					Text('Sauvegarde…'),
 				],
+			),
+		);
+	}
+}
+
+class _InlineEditableTextCell extends StatefulWidget {
+	const _InlineEditableTextCell({
+		super.key,
+		required this.width,
+		required this.text,
+		required this.onChanged,
+		this.maxLines = 3,
+	});
+
+	final double width;
+	final String text;
+	final ValueChanged<String> onChanged;
+	final int maxLines;
+
+	@override
+	State<_InlineEditableTextCell> createState() => _InlineEditableTextCellState();
+}
+
+class _InlineEditableTextCellState extends State<_InlineEditableTextCell> {
+	late final TextEditingController _controller = TextEditingController(text: widget.text);
+	late final FocusNode _focusNode = FocusNode();
+
+	@override
+	void initState() {
+		super.initState();
+		_focusNode.addListener(_handleFocusChange);
+	}
+
+	@override
+	void didUpdateWidget(covariant _InlineEditableTextCell oldWidget) {
+		super.didUpdateWidget(oldWidget);
+		if (!_focusNode.hasFocus && oldWidget.text != widget.text) {
+			_controller.text = widget.text;
+		}
+	}
+
+	void _handleFocusChange() {
+		if (!_focusNode.hasFocus) {
+			widget.onChanged(_controller.text);
+		}
+	}
+
+	@override
+	void dispose() {
+		_focusNode.removeListener(_handleFocusChange);
+		_focusNode.dispose();
+		_controller.dispose();
+		super.dispose();
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		return SizedBox(
+			width: widget.width,
+			child: TextField(
+				controller: _controller,
+				focusNode: _focusNode,
+				maxLines: widget.maxLines,
+				minLines: 1,
+				style: const TextStyle(fontSize: 13, height: 1.3),
+				decoration: const InputDecoration(
+					isDense: true,
+					contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+					border: OutlineInputBorder(),
+				),
+				onChanged: widget.onChanged,
+			),
+		);
+	}
+}
+
+class _InlineEditableNumberCell extends StatefulWidget {
+	const _InlineEditableNumberCell({
+		super.key,
+		required this.width,
+		required this.value,
+		required this.onNumberChanged,
+		this.fractionDigits = 2,
+	});
+
+	final double width;
+	final double value;
+	final ValueChanged<double?> onNumberChanged;
+	final int fractionDigits;
+
+	@override
+	State<_InlineEditableNumberCell> createState() => _InlineEditableNumberCellState();
+}
+
+class _InlineEditableNumberCellState extends State<_InlineEditableNumberCell> {
+	late final TextEditingController _controller = TextEditingController(text: _format(widget.value));
+	late final FocusNode _focusNode = FocusNode();
+
+	@override
+	void initState() {
+		super.initState();
+		_focusNode.addListener(_handleFocusChange);
+	}
+
+	@override
+	void didUpdateWidget(covariant _InlineEditableNumberCell oldWidget) {
+		super.didUpdateWidget(oldWidget);
+		if (!_focusNode.hasFocus && oldWidget.value != widget.value) {
+			_controller.text = _format(widget.value);
+		}
+	}
+
+	void _handleFocusChange() {
+		if (!_focusNode.hasFocus) {
+			_applyRawValue(_controller.text, revertOnInvalid: true);
+		}
+	}
+
+	void _onChanged(String raw) => _applyRawValue(raw);
+
+	void _applyRawValue(String raw, {bool revertOnInvalid = false}) {
+		final normalized = raw.replaceAll(' ', '').replaceAll(',', '.');
+		final parsed = double.tryParse(normalized);
+		if (parsed == null) {
+			if (revertOnInvalid) {
+				_controller.text = _format(widget.value);
+			}
+			widget.onNumberChanged(null);
+			return;
+		}
+		widget.onNumberChanged(parsed);
+	}
+
+	String _format(double value) {
+		return value.toStringAsFixed(widget.fractionDigits);
+	}
+
+	@override
+	void dispose() {
+		_focusNode.removeListener(_handleFocusChange);
+		_focusNode.dispose();
+		_controller.dispose();
+		super.dispose();
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		return SizedBox(
+			width: widget.width,
+			child: TextField(
+				controller: _controller,
+				focusNode: _focusNode,
+				textAlign: TextAlign.right,
+				keyboardType: const TextInputType.numberWithOptions(decimal: true),
+				style: const TextStyle(fontSize: 13),
+				decoration: const InputDecoration(
+					isDense: true,
+					contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+					border: OutlineInputBorder(),
+				),
+				onChanged: _onChanged,
 			),
 		);
 	}

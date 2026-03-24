@@ -126,7 +126,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   @override
   void initState() {
     super.initState();
-    _activeView = widget.startInCreationMode ? _MissionWorkspaceView.newMission : _MissionWorkspaceView.table;
+    _activeView = _MissionWorkspaceView.newMission;
     _loadLanguageOptions();
     _load();
   }
@@ -1249,13 +1249,6 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       runSpacing: 8,
       alignment: WrapAlignment.end,
       children: [
-        if (widget.userRights.canManageMissions())
-          FilledButton(
-            onPressed: _activeView == _MissionWorkspaceView.newMission
-                ? null
-                : () => _setActiveView(_MissionWorkspaceView.newMission),
-            child: const Text('Afficher le formulaire'),
-          ),
         ElevatedButton(
           onPressed: _busy ? null : _exportFilteredCsv,
           style: ElevatedButton.styleFrom(

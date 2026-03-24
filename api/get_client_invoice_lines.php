@@ -24,6 +24,7 @@ if (!is_array($input)) {
 }
 
 $invoiceNumber = trim((string) ($input['invoice_number'] ?? $input['invoice'] ?? ''));
+$missionRef = trim((string) ($input['mission_ref'] ?? ''));
 if ($invoiceNumber === '') {
     respond(400, ['success' => false, 'error' => 'Le numero de facture est obligatoire.']);
 }
@@ -31,7 +32,9 @@ if ($invoiceNumber === '') {
 try {
     ensureClientInvoiceLinesTable($pdo);
 
-    $stmt = $pdo->prepare("SELECT
+    $sql = "SELECT
+        id,
+        invoice_number,
         mission_ref,
         designation,
         tva_rate,
@@ -43,10 +46,21 @@ try {
         client_name,
         period_month
     FROM tble_client_invoice_lines
-    WHERE invoice_number = :invoice
-    ORDER BY sort_order ASC, id ASC");
+    WHERE invoice_number = :invoice";
 
-    $stmt->execute([':invoice' => $invoiceNumber]);
+    if ($missionRef !== '') {
+        $sql .= " AND mission_ref = :mission_ref";
+    }
+
+    $sql .= " ORDER BY sort_order ASC, id ASC";
+
+    $stmt = $pdo->prepare($sql);
+
+    $params = [':invoice' => $invoiceNumber];
+    if ($missionRef !== '') {
+        $params[':mission_ref'] = $missionRef;
+    }
+    $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $totalHt = 0;
@@ -57,6 +71,7 @@ try {
     respond(200, [
         'success' => true,
         'invoice_number' => $invoiceNumber,
+        'mission_ref' => $missionRef !== '' ? $missionRef : null,
         'total_ht' => round($totalHt, 2),
         'lines' => $rows,
     ]);
