@@ -608,6 +608,46 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     });
   }
 
+  Widget _buildCompactWorkspaceSwitcher() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Navigation',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<_MissionWorkspaceView>(
+            multiSelectionEnabled: false,
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment<_MissionWorkspaceView>(
+                value: _MissionWorkspaceView.newMission,
+                icon: Icon(Icons.add_circle_outline),
+                label: Text('Nouvelle mission'),
+              ),
+              ButtonSegment<_MissionWorkspaceView>(
+                value: _MissionWorkspaceView.table,
+                icon: Icon(Icons.table_rows_outlined),
+                label: Text('Tableau'),
+              ),
+            ],
+            selected: <_MissionWorkspaceView>{_activeView},
+            onSelectionChanged: (selection) {
+              final view = selection.firstOrNull;
+              if (view != null) {
+                _setActiveView(view);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSidebar(double spacing) {
     final double viewWidth = MediaQuery.of(context).size.width;
     final bool forceCompact = viewWidth < 1100;
@@ -801,9 +841,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                         bottom: Radius.circular(4),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        DropdownButton<int>(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact = constraints.maxWidth < 720;
+                        final pageSizeDropdown = DropdownButton<int>(
                           value: _pageSize,
                           items: const [25, 50, 100]
                               .map(
@@ -823,34 +864,58 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                                     _load(resetPage: true);
                                   }
                                 },
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _busy || _page <= 1
-                              ? null
-                              : () {
-                                  setState(() {
-                                    _page -= 1;
-                                  });
-                                  _load();
-                                },
-                          child: const Text('Préc.'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _busy || (_page * _pageSize >= _total)
-                              ? null
-                              : () {
-                                  setState(() {
-                                    _page += 1;
-                                  });
-                                  _load();
-                                },
-                          child: const Text('Suiv.'),
-                        ),
-                        const SizedBox(width: 12),
-                        Text('Page $_page • Total $_total'),
-                      ],
+                        );
+                        final navigation = Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ElevatedButton(
+                              onPressed: _busy || _page <= 1
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _page -= 1;
+                                      });
+                                      _load();
+                                    },
+                              child: const Text('Préc.'),
+                            ),
+                            ElevatedButton(
+                              onPressed: _busy || (_page * _pageSize >= _total)
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _page += 1;
+                                      });
+                                      _load();
+                                    },
+                              child: const Text('Suiv.'),
+                            ),
+                          ],
+                        );
+                        final summary = Text('Page $_page • Total $_total');
+                        if (compact) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              pageSizeDropdown,
+                              const SizedBox(height: 8),
+                              navigation,
+                              const SizedBox(height: 8),
+                              summary,
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            pageSizeDropdown,
+                            const SizedBox(width: 8),
+                            navigation,
+                            const SizedBox(width: 12),
+                            summary,
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -952,59 +1017,105 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool narrow = constraints.maxWidth < 960;
-        final double searchWidth = narrow ? double.infinity : 280;
-        final Widget statusFilters = SizedBox(
-          width: narrow ? double.infinity : 360,
-          child: _buildStatusFilters(),
-        );
-        final Widget searchField = SizedBox(
-          width: searchWidth,
-          child: TextField(
-            controller: _searchCtrl,
-            decoration: const InputDecoration(
-              labelText:
-                  'Rechercher (Ref. mission, client, interprète, produit)',
-              prefixIcon: Icon(Icons.search),
-              isDense: true,
-            ),
-            onSubmitted: (_) => _load(resetPage: true),
-          ),
-        );
+        final bool compact = constraints.maxWidth < 720;
+        final bool medium = constraints.maxWidth < 1080;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                statusFilters,
-                searchField,
-                TextButton(
-                  onPressed: () => setState(() => _filtersCollapsed = true),
-                  child: const Text('Masquer les filtres'),
-                ),
-              ],
+            Container(
+              padding: EdgeInsets.all(compact ? 12 : 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (compact) ...[
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Filtres du tableau',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _filtersCollapsed = true),
+                          child: const Text('Masquer'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    crossAxisAlignment: WrapCrossAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: compact
+                            ? constraints.maxWidth
+                            : medium
+                            ? constraints.maxWidth
+                            : 390,
+                        child: _buildStatusFilters(compact: compact),
+                      ),
+                      SizedBox(
+                        width: compact
+                            ? constraints.maxWidth
+                            : medium
+                            ? constraints.maxWidth
+                            : 360,
+                        child: _buildSearchPanel(compact: compact),
+                      ),
+                      if (!compact)
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _filtersCollapsed = true),
+                          child: const Text('Masquer les filtres'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _buildFilterSummaryText(),
+                  const SizedBox(height: 14),
+                  if (compact) ...[
+                    _buildDateControls(compact: true),
+                    const SizedBox(height: 12),
+                    _buildActionButtonsRow(compact: true),
+                  ] else ...[
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 12,
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minWidth: 320,
+                            maxWidth: 680,
+                          ),
+                          child: _buildDateControls(),
+                        ),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          child: _buildActionButtonsRow(),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  _buildDateResetRow(compact: compact),
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
-            _buildFilterSummaryText(),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              alignment: WrapAlignment.spaceBetween,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 280, maxWidth: 520),
-                  child: _buildDateControls(),
-                ),
-                _buildActionButtonsRow(),
-              ],
-            ),
-            const SizedBox(height: 4),
-            _buildDateResetRow(),
             const SizedBox(height: 8),
           ],
         );
@@ -1054,42 +1165,112 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     );
   }
 
-  Widget _buildStatusFilters() {
+  Widget _buildStatusFilters({bool compact = false}) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Statuts',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF111827),
+            ),
           ),
+          const SizedBox(height: 10),
+          if (compact)
+            Column(
+              children: [
+                _buildDropdownFilter(
+                  label: 'Statut facture',
+                  value: _statusFilter,
+                  options: _statusOptions,
+                  displayLabel: (option) => _labelForBillingFilter(option),
+                  onChanged: (v) => setState(() => _statusFilter = v ?? 'Tous'),
+                ),
+                const SizedBox(height: 12),
+                _buildDropdownFilter(
+                  label: 'Statut mission',
+                  value: _workflowFilter,
+                  options: _workflowOptions,
+                  displayLabel: (option) => _labelForStatus(option),
+                  onChanged: (v) =>
+                      setState(() => _workflowFilter = v ?? 'Tous'),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDropdownFilter(
+                    label: 'Statut facture',
+                    value: _statusFilter,
+                    options: _statusOptions,
+                    displayLabel: (option) => _labelForBillingFilter(option),
+                    onChanged: (v) =>
+                        setState(() => _statusFilter = v ?? 'Tous'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDropdownFilter(
+                    label: 'Statut mission',
+                    value: _workflowFilter,
+                    options: _workflowOptions,
+                    displayLabel: (option) => _labelForStatus(option),
+                    onChanged: (v) =>
+                        setState(() => _workflowFilter = v ?? 'Tous'),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    );
+  }
+
+  Widget _buildSearchPanel({bool compact = false}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: _buildDropdownFilter(
-              label: 'Statut facture',
-              value: _statusFilter,
-              options: _statusOptions,
-              displayLabel: (option) => _labelForBillingFilter(option),
-              onChanged: (v) => setState(() => _statusFilter = v ?? 'Tous'),
+          const Text(
+            'Recherche',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF111827),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildDropdownFilter(
-              label: 'Statut mission',
-              value: _workflowFilter,
-              options: _workflowOptions,
-              displayLabel: (option) => _labelForStatus(option),
-              onChanged: (v) => setState(() => _workflowFilter = v ?? 'Tous'),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _searchCtrl,
+            decoration: InputDecoration(
+              hintText: compact
+                  ? 'Réf. mission, client, interprète...'
+                  : 'Rechercher (Ref. mission, client, interprète, produit)',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                onPressed: _busy ? null : () => _load(resetPage: true),
+                icon: const Icon(Icons.arrow_forward),
+                tooltip: 'Lancer la recherche',
+              ),
             ),
+            onSubmitted: (_) => _load(resetPage: true),
           ),
         ],
       ),
@@ -1147,41 +1328,37 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     );
   }
 
-  Widget _buildDateControls() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          ..._dateFilterOptions.map((opt) {
-            final bool selected = _dateFilter == opt;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: ChoiceChip(
-                label: Text(opt),
-                selected: selected,
-                onSelected: (v) => setState(() => _dateFilter = opt),
-                selectedColor: _primaryBlue,
-                labelStyle: TextStyle(
-                  color: selected ? Colors.white : _primaryBlue,
-                ),
-                backgroundColor: Colors.white,
-                shape: StadiumBorder(
-                  side: BorderSide(color: _primaryBlue),
-                ),
-              ),
-            );
-          }),
-          FilledButton(
-            onPressed: _pickDateRange,
-            style: FilledButton.styleFrom(
-              backgroundColor: _primaryBlue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  Widget _buildDateControls({bool compact = false}) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ..._dateFilterOptions.map((opt) {
+          final bool selected = _dateFilter == opt;
+          return ChoiceChip(
+            label: Text(opt),
+            selected: selected,
+            onSelected: (v) => setState(() => _dateFilter = opt),
+            selectedColor: _primaryBlue,
+            labelStyle: TextStyle(
+              color: selected ? Colors.white : _primaryBlue,
             ),
-            child: const Text('Choisir période'),
+            backgroundColor: Colors.white,
+            shape: StadiumBorder(
+              side: BorderSide(color: _primaryBlue),
+            ),
+          );
+        }),
+        FilledButton(
+          onPressed: _pickDateRange,
+          style: FilledButton.styleFrom(
+            backgroundColor: _primaryBlue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
-        ],
-      ),
+          child: Text(compact ? 'Période' : 'Choisir période'),
+        ),
+      ],
     );
   }
 
@@ -1210,15 +1387,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     });
   }
 
-  Widget _buildDateResetRow() {
-    return Row(
+  Widget _buildDateResetRow({bool compact = false}) {
+    final actions = Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      alignment: compact ? WrapAlignment.start : WrapAlignment.end,
       children: [
-        if (_dateStart != null && _dateEnd != null)
-          Text(
-            '${_fmtDate(_dateStart!)} → ${_fmtDate(_dateEnd!)}',
-            style: const TextStyle(color: Color(0xFF161616)),
-          ),
-        const Spacer(),
         if (_dateStart != null || _dateEnd != null)
           TextButton(
             onPressed: () => setState(() {
@@ -1227,8 +1401,6 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
             }),
             child: const Text('Effacer'),
           ),
-        if (_dateStart != null || _dateEnd != null)
-          const SizedBox(width: 4),
         TextButton(
           onPressed: () => setState(() {
             _statusFilter = 'Tous';
@@ -1236,44 +1408,84 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
             _dateFilter = 'Tous';
             _dateStart = null;
             _dateEnd = null;
+            _searchCtrl.clear();
           }),
           child: const Text('Réinitialiser les filtres'),
         ),
       ],
     );
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_dateStart != null && _dateEnd != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '${_fmtDate(_dateStart!)} → ${_fmtDate(_dateEnd!)}',
+                style: const TextStyle(color: Color(0xFF161616)),
+              ),
+            ),
+          actions,
+        ],
+      );
+    }
+    return Row(
+      children: [
+        if (_dateStart != null && _dateEnd != null)
+          Text(
+            '${_fmtDate(_dateStart!)} → ${_fmtDate(_dateEnd!)}',
+            style: const TextStyle(color: Color(0xFF161616)),
+          ),
+        const Spacer(),
+        actions,
+      ],
+    );
   }
 
-  Widget _buildActionButtonsRow() {
+  Widget _buildActionButtonsRow({bool compact = false}) {
+    final buttons = [
+      ElevatedButton(
+        onPressed: _busy ? null : _exportFilteredCsv,
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size(compact ? double.infinity : 0, 40),
+        ),
+        child: const Text('Exporter filtré (CSV)'),
+      ),
+      ElevatedButton(
+        onPressed: _busy ? null : _showColumnPicker,
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size(compact ? double.infinity : 0, 40),
+        ),
+        child: const Text('Colonnes à afficher'),
+      ),
+      ElevatedButton(
+        onPressed: _canCreateInvoice ? _goToBilling : null,
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size(compact ? double.infinity : 0, 40),
+        ),
+        child: const Text('Créer facture'),
+      ),
+    ];
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var index = 0; index < buttons.length; index++) ...[
+            buttons[index],
+            if (index < buttons.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      );
+    }
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       alignment: WrapAlignment.end,
-      children: [
-        ElevatedButton(
-          onPressed: _busy ? null : _exportFilteredCsv,
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            minimumSize: const Size(0, 36),
-          ),
-          child: const Text('Exporter filtré (CSV)'),
-        ),
-        ElevatedButton(
-          onPressed: _busy ? null : _showColumnPicker,
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            minimumSize: const Size(0, 36),
-          ),
-          child: const Text('Colonnes à afficher'),
-        ),
-        ElevatedButton(
-          onPressed: _canCreateInvoice ? _goToBilling : null,
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            minimumSize: const Size(0, 36),
-          ),
-          child: const Text('Créer facture'),
-        ),
-      ],
+      children: buttons,
     );
   }
 
@@ -1838,6 +2050,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   @override
   Widget build(BuildContext context) {
     final spacing = ResponsiveHelper.getSpacing(context);
+    final isCompactLayout = MediaQuery.of(context).size.width < 860;
     return Scaffold(
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(0),
@@ -1849,13 +2062,22 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
           toolbarHeight: 0,
         ),
       ),
-      body: Row(
-        children: [
-          _buildSidebar(spacing),
-          Expanded(
-            child: _buildTableScreen(spacing),
-          ),
-        ],
+      body: SafeArea(
+        child: isCompactLayout
+            ? Column(
+                children: [
+                  _buildCompactWorkspaceSwitcher(),
+                  Expanded(child: _buildTableScreen(spacing)),
+                ],
+              )
+            : Row(
+                children: [
+                  _buildSidebar(spacing),
+                  Expanded(
+                    child: _buildTableScreen(spacing),
+                  ),
+                ],
+              ),
       ),
     );
   }

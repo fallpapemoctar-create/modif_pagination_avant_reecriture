@@ -74,6 +74,7 @@ try {
     $dataSql = "
         SELECT
             cb.id,
+            cb.category,
             cb.invoice_number,
             cb.invoice_total_ht,
             cb.amount_ht,
@@ -82,8 +83,12 @@ try {
             cb.status_code,
             cb.status_label,
             cb.billed_at,
+            cb.pdf_size,
             cb.created_by,
             cb.created_by_name,
+            cb.notes,
+            cb.created_at,
+            cb.updated_at,
             cb.pdf_filename,
             cb.pdf_path,
             m.label AS mission_label

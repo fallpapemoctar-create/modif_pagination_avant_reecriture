@@ -387,8 +387,14 @@ class ClientInvoiceSummary {
     this.missionRef,
     this.pdfFilename,
     this.pdfPath,
+    this.pdfSize,
     this.createdBy,
     this.createdByName,
+    this.category,
+    this.notes,
+    this.missionLabel,
+    this.createdAt,
+    this.updatedAt,
   });
 
   ClientInvoiceSummary copyWith({
@@ -409,16 +415,32 @@ class ClientInvoiceSummary {
       missionRef: missionRef,
       pdfFilename: pdfFilename,
       pdfPath: pdfPath,
+      pdfSize: pdfSize,
       createdBy: createdBy,
       createdByName: createdByName,
+      category: category,
+      notes: notes,
+      missionLabel: missionLabel,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 
   factory ClientInvoiceSummary.fromJson(Map<String, dynamic> json) {
     DateTime? billedAt;
+    DateTime? createdAt;
+    DateTime? updatedAt;
     final billedRaw = json['billed_at'];
     if (billedRaw is String && billedRaw.trim().isNotEmpty) {
       billedAt = DateTime.tryParse(billedRaw.trim());
+    }
+    final createdRaw = json['created_at'];
+    if (createdRaw is String && createdRaw.trim().isNotEmpty) {
+      createdAt = DateTime.tryParse(createdRaw.trim());
+    }
+    final updatedRaw = json['updated_at'];
+    if (updatedRaw is String && updatedRaw.trim().isNotEmpty) {
+      updatedAt = DateTime.tryParse(updatedRaw.trim());
     }
     return ClientInvoiceSummary(
       id: json['id'] is num ? (json['id'] as num).toInt() : 0,
@@ -427,13 +449,19 @@ class ClientInvoiceSummary {
       statusCode: (json['status_code'] ?? '').toString(),
       statusLabel: (json['status_label'] ?? '').toString(),
       missionRef: json['mission_ref']?.toString(),
-      amountHt: json['amount_ht'] is num ? (json['amount_ht'] as num).toDouble() : 0,
-      invoiceTotalHt: json['invoice_total_ht'] is num ? (json['invoice_total_ht'] as num).toDouble() : 0,
+      amountHt: _parseDecimal(json['amount_ht']),
+      invoiceTotalHt: _parseDecimal(json['invoice_total_ht']),
       billedAt: billedAt,
       pdfFilename: json['pdf_filename']?.toString(),
       pdfPath: json['pdf_path']?.toString(),
+      pdfSize: json['pdf_size'] is num ? (json['pdf_size'] as num).toInt() : int.tryParse((json['pdf_size'] ?? '').toString()),
       createdBy: json['created_by'] is num ? (json['created_by'] as num).toInt() : null,
       createdByName: json['created_by_name']?.toString(),
+      category: json['category']?.toString(),
+      notes: json['notes']?.toString(),
+      missionLabel: json['mission_label']?.toString(),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 
@@ -446,10 +474,23 @@ class ClientInvoiceSummary {
   final double invoiceTotalHt;
   final DateTime? billedAt;
   final String? missionRef;
+  final String? missionLabel;
   final String? pdfFilename;
   final String? pdfPath;
+  final int? pdfSize;
   final int? createdBy;
   final String? createdByName;
+  final String? category;
+  final String? notes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  static double _parseDecimal(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    final normalized = value.toString().trim().replaceAll(',', '.');
+    return double.tryParse(normalized) ?? 0;
+  }
 }
 
 class ClientInvoiceLinesResult {
