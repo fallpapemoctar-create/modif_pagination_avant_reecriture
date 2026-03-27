@@ -344,6 +344,9 @@ class _BillingPageState extends State<BillingPage> {
   List<CompanyBankAccount> _companyBankAccounts = [];
   bool _loadingCompanyBankAccounts = false;
   int? _selectedCompanyBankAccountId;
+  List<ClientPaymentTerm> _clientPaymentTerms = [];
+  bool _loadingClientPaymentTerms = false;
+  int? _selectedClientPaymentTermId;
   pw.Font? _pdfFontRegular;
   pw.Font? _pdfFontBold;
   pw.MemoryImage? _pdfLogoImage;
@@ -912,18 +915,62 @@ class _BillingPageState extends State<BillingPage> {
                       },
               ),
             );
+            final paymentTermField = _buildToolbarField(
+              label: 'Condition de règlement',
+              width: isCompact ? constraints.maxWidth : 340.0,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey(_selectedClientPaymentTermId),
+                initialValue: _selectedClientPaymentTermId,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: _loadingClientPaymentTerms
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Icon(Icons.receipt_long_outlined),
+                ),
+                hint: const Text('Condition par défaut du client'),
+                items: _clientPaymentTerms
+                    .map(
+                      (term) => DropdownMenuItem<int>(
+                        value: term.id,
+                        child: Text(term.dropdownLabel),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: _clientPaymentTerms.isEmpty
+                    ? null
+                    : (value) {
+                        if (value == null) return;
+                        setState(() => _selectedClientPaymentTermId = value);
+                      },
+              ),
+            );
 
             if (isWideDesktop) {
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  clientField,
-                  const SizedBox(width: 16),
-                  monthField,
-                  const SizedBox(width: 16),
-                  bankField,
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildToolbarButtons(allowWrap: true)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      clientField,
+                      const SizedBox(width: 16),
+                      monthField,
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildToolbarButtons(allowWrap: true)),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _buildInvoiceSettingsBlock(
+                    fields: [paymentTermField, bankField],
+                    compact: false,
+                  ),
                 ],
               );
             }
@@ -935,12 +982,17 @@ class _BillingPageState extends State<BillingPage> {
                   spacing: 16,
                   runSpacing: 6,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [clientField, monthField, bankField],
+                  children: [clientField, monthField],
                 ),
                 const SizedBox(height: 12),
                 _buildToolbarButtons(
                   allowWrap: !isCompact,
                   width: isCompact ? constraints.maxWidth : null,
+                ),
+                const SizedBox(height: 14),
+                _buildInvoiceSettingsBlock(
+                  fields: [paymentTermField, bankField],
+                  compact: true,
                 ),
               ],
             );
@@ -1040,6 +1092,53 @@ class _BillingPageState extends State<BillingPage> {
           );
     if (width == null) return buttons;
     return SizedBox(width: width, child: buttons);
+  }
+
+  Widget _buildInvoiceSettingsBlock({
+    required List<Widget> fields,
+    required bool compact,
+  }) {
+    final content = compact
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var index = 0; index < fields.length; index++) ...[
+                fields[index],
+                if (index < fields.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          )
+        : Wrap(spacing: 16, runSpacing: 12, children: fields);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Paramètres de facture',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: Color(0xFF334155),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Ces valeurs seront appliquées au PDF généré.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 12),
+          content,
+        ],
+      ),
+    );
   }
 
   Widget _buildInvoiceCard(double spacing) {
@@ -3316,6 +3415,7 @@ class _BillingPageState extends State<BillingPage> {
         _allClientMissions = filtered;
         _loadingMissions = false;
       });
+      await _loadClientPaymentTermsForMissions(filtered);
       _applyMonthFilter();
       if (filtered.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3333,6 +3433,8 @@ class _BillingPageState extends State<BillingPage> {
         _allClientMissions = [];
         _missions = [];
         _lineEditors.clear();
+        _clientPaymentTerms = [];
+        _selectedClientPaymentTermId = null;
         _loadError = 'Impossible de récupérer les missions (connexion ou API).';
       });
     }
@@ -3383,6 +3485,7 @@ class _BillingPageState extends State<BillingPage> {
       );
       final billedAtLabel = DateFormat('dd/MM/yyyy').format(now);
       final clientCode = _clientCodeForPdf();
+      final paymentTermLabel = _selectedClientPaymentTermLabel;
       final theme = pw.ThemeData.withFont(
         base: _pdfFontRegular!,
         bold: _pdfFontBold!,
@@ -3578,16 +3681,30 @@ class _BillingPageState extends State<BillingPage> {
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
-                if (hasBankDetails)
+                if (hasBankDetails || paymentTermLabel != null)
                   pw.Expanded(
-                    child: _buildPdfBankTransferBlock(
-                      companyInfo,
-                      borderColor: borderColor,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      children: [
+                        if (paymentTermLabel != null) ...[
+                          _buildPdfPaymentTermBlock(
+                            paymentTermLabel,
+                            borderColor: borderColor,
+                          ),
+                          if (hasBankDetails) pw.SizedBox(height: 8),
+                        ],
+                        if (hasBankDetails)
+                          _buildPdfBankTransferBlock(
+                            companyInfo,
+                            borderColor: borderColor,
+                          ),
+                      ],
                     ),
                   )
                 else
                   pw.Spacer(),
-                if (hasBankDetails) pw.SizedBox(width: 16),
+                if (hasBankDetails || paymentTermLabel != null)
+                  pw.SizedBox(width: 16),
                 pw.Container(
                   width: 210,
                   decoration: pw.BoxDecoration(
@@ -3791,6 +3908,64 @@ class _BillingPageState extends State<BillingPage> {
       debugPrint(stack.toString());
       if (!mounted) return;
       setState(() => _loadingCompanyBankAccounts = false);
+    }
+  }
+
+  Future<void> _loadClientPaymentTermsForMissions(
+    List<Map<String, dynamic>> missions,
+  ) async {
+    final clientId = _clientIdFromMissions(missions);
+    if (clientId == null || clientId <= 0) {
+      if (!mounted) {
+        _clientPaymentTerms = [];
+        _selectedClientPaymentTermId = null;
+        return;
+      }
+      setState(() {
+        _clientPaymentTerms = [];
+        _selectedClientPaymentTermId = null;
+      });
+      return;
+    }
+    if (mounted) {
+      setState(() => _loadingClientPaymentTerms = true);
+    } else {
+      _loadingClientPaymentTerms = true;
+    }
+    try {
+      final result = await BillingService.getClientPaymentTerms(
+        clientId: clientId,
+      );
+      final selectedId = _resolveSelectedClientPaymentTermId(
+        terms: result.paymentTerms,
+        currentSelectedId: _selectedClientPaymentTermId,
+        defaultTermId: result.defaultTermId,
+      );
+      if (!mounted) {
+        _clientPaymentTerms = result.paymentTerms;
+        _selectedClientPaymentTermId = selectedId;
+        _loadingClientPaymentTerms = false;
+        return;
+      }
+      setState(() {
+        _clientPaymentTerms = result.paymentTerms;
+        _selectedClientPaymentTermId = selectedId;
+        _loadingClientPaymentTerms = false;
+      });
+    } catch (error, stack) {
+      debugPrint('Failed to load client payment terms: $error');
+      debugPrint(stack.toString());
+      if (!mounted) {
+        _clientPaymentTerms = [];
+        _selectedClientPaymentTermId = null;
+        _loadingClientPaymentTerms = false;
+        return;
+      }
+      setState(() {
+        _clientPaymentTerms = [];
+        _selectedClientPaymentTermId = null;
+        _loadingClientPaymentTerms = false;
+      });
     }
   }
 
@@ -4353,6 +4528,70 @@ class _BillingPageState extends State<BillingPage> {
   CompanyInfo get _resolvedCompanyInfo =>
       _companyInfo ?? CompanyInfo.fallback();
 
+  ClientPaymentTerm? get _selectedClientPaymentTerm {
+    final selectedId = _selectedClientPaymentTermId;
+    if (selectedId == null) {
+      return null;
+    }
+    for (final term in _clientPaymentTerms) {
+      if (term.id == selectedId) {
+        return term;
+      }
+    }
+    return null;
+  }
+
+  String? get _selectedClientPaymentTermLabel {
+    final term = _selectedClientPaymentTerm;
+    if (term == null) {
+      return null;
+    }
+    final label = term.displayLabel.trim();
+    if (label.isNotEmpty) {
+      return label;
+    }
+    final code = term.code.trim();
+    return code.isEmpty ? null : code;
+  }
+
+  int? _resolveSelectedClientPaymentTermId({
+    required List<ClientPaymentTerm> terms,
+    required int? currentSelectedId,
+    required int? defaultTermId,
+  }) {
+    if (terms.isEmpty) {
+      return null;
+    }
+    if (currentSelectedId != null &&
+        terms.any((term) => term.id == currentSelectedId)) {
+      return currentSelectedId;
+    }
+    if (defaultTermId != null &&
+        terms.any((term) => term.id == defaultTermId)) {
+      return defaultTermId;
+    }
+    for (final term in terms) {
+      if (term.isDefault) {
+        return term.id;
+      }
+    }
+    return terms.first.id;
+  }
+
+  int? _clientIdFromMissions(List<Map<String, dynamic>> missions) {
+    for (final mission in missions) {
+      final rawClientId = _stringValueFromKeys(mission, const [
+        'client_id',
+        'fk_soc',
+      ]);
+      final parsed = int.tryParse(rawClientId);
+      if (parsed != null && parsed > 0) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
   CompanyBankAccount? get _selectedCompanyBankAccount {
     final selectedId = _selectedCompanyBankAccountId;
     if (selectedId == null) {
@@ -4506,6 +4745,37 @@ class _BillingPageState extends State<BillingPage> {
                 fontSize: _pdfFontSize(8.4),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPdfPaymentTermBlock(
+    String paymentTermLabel, {
+    required PdfColor borderColor,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        borderRadius: pw.BorderRadius.circular(6),
+        border: pw.Border.all(color: borderColor, width: 0.5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Condition de règlement',
+            style: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              fontSize: _pdfFontSize(9.5),
+            ),
+          ),
+          pw.SizedBox(height: 3),
+          pw.Text(
+            paymentTermLabel,
+            style: pw.TextStyle(fontSize: _pdfFontSize(8.8)),
+          ),
         ],
       ),
     );

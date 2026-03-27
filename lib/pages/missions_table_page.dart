@@ -72,7 +72,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   String _workflowFilter = 'Tous';
   final List<String> _workflowOptions = const ['Tous', '0', '1', '9'];
   List<String> _languageOptions = <String>[];
-  List<_AutocompleteEntry<String>> _languageEntries = <_AutocompleteEntry<String>>[];
+  List<_AutocompleteEntry<String>> _languageEntries =
+      <_AutocompleteEntry<String>>[];
   _MissionWorkspaceView _activeView = _MissionWorkspaceView.table;
   bool _sidebarCollapsed = false;
   bool _filtersCollapsed = false;
@@ -155,7 +156,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   List<String> _decodeMissionTypes(dynamic raw) {
     if (raw == null) return <String>[];
     if (raw is List) {
-      return raw.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
+      return raw
+          .map((e) => e.toString())
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
     }
     final text = raw.toString().trim();
     if (text.isEmpty) return <String>[];
@@ -167,7 +171,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   }
 
   String _friendlyMissionError(String? message, {required bool isCreation}) {
-    final fallback = isCreation ? 'Impossible de créer la mission.' : 'Impossible de mettre à jour la mission.';
+    final fallback = isCreation
+        ? 'Impossible de créer la mission.'
+        : 'Impossible de mettre à jour la mission.';
     if (message == null || message.trim().isEmpty) return fallback;
     final lowered = message.toLowerCase();
     if (lowered.contains('duplicate') || lowered.contains('existe')) {
@@ -254,7 +260,13 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     if (parsedDate == null) return null;
     final parsedTime = time.trim().isEmpty ? null : _parseMissionTime(time);
     if (parsedTime == null) return parsedDate;
-    return DateTime(parsedDate.year, parsedDate.month, parsedDate.day, parsedTime.hour, parsedTime.minute);
+    return DateTime(
+      parsedDate.year,
+      parsedDate.month,
+      parsedDate.day,
+      parsedTime.hour,
+      parsedTime.minute,
+    );
   }
 
   String _formatDateTimeForApi(DateTime dt) {
@@ -316,10 +328,16 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     Iterable<Map<String, dynamic>> data = _missions;
     if (_statusFilter != 'Tous') {
       final needle = _statusFilter.toLowerCase();
-      data = data.where((mission) => (mission['billed_status'] ?? '').toString().toLowerCase() == needle);
+      data = data.where(
+        (mission) =>
+            (mission['billed_status'] ?? '').toString().toLowerCase() == needle,
+      );
     }
     if (_workflowFilter != 'Tous') {
-      data = data.where((mission) => (mission['mission_status'] ?? '').toString() == _workflowFilter);
+      data = data.where(
+        (mission) =>
+            (mission['mission_status'] ?? '').toString() == _workflowFilter,
+      );
     }
     final search = _searchCtrl.text.trim().toLowerCase();
     if (search.isNotEmpty) {
@@ -332,7 +350,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
           mission['label'],
         ];
         return fields.any(
-          (value) => value != null && value.toString().toLowerCase().contains(search),
+          (value) =>
+              value != null && value.toString().toLowerCase().contains(search),
         );
       });
     }
@@ -362,7 +381,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     }
     if (start != null || end != null) {
       data = data.where((mission) {
-        final raw = (mission['datemission_iso'] ?? mission['datemission'] ?? '').toString();
+        final raw = (mission['datemission_iso'] ?? mission['datemission'] ?? '')
+            .toString();
         final parsed = _parseMissionDate(raw);
         if (parsed == null) return false;
         if (start != null && parsed.isBefore(start)) return false;
@@ -411,32 +431,41 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     ];
     final buffer = StringBuffer()..writeln(headers.join(';'));
     for (final mission in rows) {
-      buffer.writeln([
-        mission['reference_devis'] ?? '',
-        mission['client_name'] ?? '',
-        mission['interpreter_name'] ?? '',
-        mission['produit_ref'] ?? '',
-        mission['datemission'] ?? mission['datemission_iso'] ?? '',
-        mission['heuredebutmission'] ?? '',
-        mission['dureemission'] ?? '',
-        _labelForStatus((mission['mission_status'] ?? '').toString()),
-      ].map((value) {
-        final text = value.toString().replaceAll(';', ',');
-        return '"${text.replaceAll('"', '""')}"';
-      }).join(';'));
+      buffer.writeln(
+        [
+              mission['reference_devis'] ?? '',
+              mission['client_name'] ?? '',
+              mission['interpreter_name'] ?? '',
+              mission['produit_ref'] ?? '',
+              mission['datemission'] ?? mission['datemission_iso'] ?? '',
+              mission['heuredebutmission'] ?? '',
+              mission['dureemission'] ?? '',
+              _labelForStatus((mission['mission_status'] ?? '').toString()),
+            ]
+            .map((value) {
+              final text = value.toString().replaceAll(';', ',');
+              return '"${text.replaceAll('"', '""')}"';
+            })
+            .join(';'),
+      );
     }
     await downloadBytes(
       bytes: utf8.encode(buffer.toString()),
-      filename: 'missions_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv',
+      filename:
+          'missions_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv',
       mimeType: 'text/csv',
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Export CSV généré.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Export CSV généré.')));
   }
 
-  void _sortByString(String? Function(Map<String, dynamic>) selector, int columnIndex, bool ascending) {
+  void _sortByString(
+    String? Function(Map<String, dynamic>) selector,
+    int columnIndex,
+    bool ascending,
+  ) {
     setState(() {
       _sortColumnIndex = columnIndex;
       _sortAscending = ascending;
@@ -448,7 +477,11 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     });
   }
 
-  void _sortByNum(num Function(Map<String, dynamic>) selector, int columnIndex, bool ascending) {
+  void _sortByNum(
+    num Function(Map<String, dynamic>) selector,
+    int columnIndex,
+    bool ascending,
+  ) {
     setState(() {
       _sortColumnIndex = columnIndex;
       _sortAscending = ascending;
@@ -460,7 +493,11 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     });
   }
 
-  void _sortByDate(DateTime? Function(Map<String, dynamic>) selector, int columnIndex, bool ascending) {
+  void _sortByDate(
+    DateTime? Function(Map<String, dynamic>) selector,
+    int columnIndex,
+    bool ascending,
+  ) {
     setState(() {
       _sortColumnIndex = columnIndex;
       _sortAscending = ascending;
@@ -590,7 +627,11 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     final selected = _selectedMissionsForBilling();
     if (selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez sélectionner au moins une mission visible sur cette page.')),
+        const SnackBar(
+          content: Text(
+            'Veuillez sélectionner au moins une mission visible sur cette page.',
+          ),
+        ),
       );
       return;
     }
@@ -679,10 +720,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
               vertical: 12,
             ),
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: radius,
-            ),
+            decoration: BoxDecoration(color: background, borderRadius: radius),
             child: Row(
               mainAxisAlignment: collapsed
                   ? MainAxisAlignment.center
@@ -696,8 +734,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       label,
                       style: TextStyle(
                         color: activeColor,
-                        fontWeight:
-                            active ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                       ),
                     ),
                   ),
@@ -714,9 +751,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       width: panelWidth,
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          right: BorderSide(color: Color(0xFFE5E7EB), width: 1),
-        ),
+        border: Border(right: BorderSide(color: Color(0xFFE5E7EB), width: 1)),
       ),
       child: Column(
         children: [
@@ -726,8 +761,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  const Icon(Icons.dashboard_customize,
-                      color: Color(0xFF000091)),
+                  const Icon(
+                    Icons.dashboard_customize,
+                    color: Color(0xFF000091),
+                  ),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
@@ -769,7 +806,6 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       ),
     );
   }
-
 
   Widget _buildTableScreen(double spacing) {
     if (_activeView == _MissionWorkspaceView.newMission) {
@@ -1317,10 +1353,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   .toList(),
               onChanged: onChanged,
               icon: const Icon(Icons.expand_more, color: Color(0xFF000091)),
-              style: const TextStyle(
-                color: Color(0xFF161616),
-                fontSize: 14,
-              ),
+              style: const TextStyle(color: Color(0xFF161616), fontSize: 14),
             ),
           ),
         ),
@@ -1344,9 +1377,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
               color: selected ? Colors.white : _primaryBlue,
             ),
             backgroundColor: Colors.white,
-            shape: StadiumBorder(
-              side: BorderSide(color: _primaryBlue),
-            ),
+            shape: StadiumBorder(side: BorderSide(color: _primaryBlue)),
           );
         }),
         FilledButton(
@@ -1364,9 +1395,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
 
   Future<void> _pickDateRange() async {
     final DateTime now = DateTime.now();
-    final DateTime initialStart = _dateStart ?? DateTime(now.year, now.month, 1);
+    final DateTime initialStart =
+        _dateStart ?? DateTime(now.year, now.month, 1);
     final DateTime initialEndCandidate = _dateEnd ?? now;
-    final DateTime initialEnd = initialEndCandidate.isBefore(initialStart) ? initialStart : initialEndCandidate;
+    final DateTime initialEnd = initialEndCandidate.isBefore(initialStart)
+        ? initialStart
+        : initialEndCandidate;
 
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
@@ -1381,7 +1415,11 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     if (picked == null) return;
 
     setState(() {
-      _dateStart = DateTime(picked.start.year, picked.start.month, picked.start.day);
+      _dateStart = DateTime(
+        picked.start.year,
+        picked.start.month,
+        picked.start.day,
+      );
       _dateEnd = DateTime(picked.end.year, picked.end.month, picked.end.day);
       _dateFilter = 'Tous';
     });
@@ -1489,7 +1527,6 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     );
   }
 
-
   Widget _sortableHeader(String title) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1527,10 +1564,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     return DataCell(
       SizedBox(
         width: w,
-        child: Text(
-          text,
-          overflow: TextOverflow.ellipsis,
-        ),
+        child: Text(text, overflow: TextOverflow.ellipsis),
       ),
     );
   }
@@ -1634,7 +1668,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     DataColumn(
                       label: _sortableHeader('Date mission'),
                       onSort: (i, asc) => _sortByDate(
-                        (m) => _parseMissionDate((m['datemission_iso'] ?? m['datemission'] ?? '').toString()),
+                        (m) => _parseMissionDate(
+                          (m['datemission_iso'] ?? m['datemission'] ?? '')
+                              .toString(),
+                        ),
                         i,
                         asc,
                       ),
@@ -1689,8 +1726,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       label: _sortableHeader('Demandeur'),
                       onSort: (i, asc) => _sortByString(
                         (m) =>
-                            ('${((m['prenom_demandeur'] ?? '') as String).trim()} ${((m['nom_demandeur'] ?? '') as String)
-                                        .trim()}')
+                            ('${((m['prenom_demandeur'] ?? '') as String).trim()} ${((m['nom_demandeur'] ?? '') as String).trim()}')
                                 .trim(),
                         i,
                         asc,
@@ -1768,8 +1804,13 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       label: _sortableHeader('Date création'),
                       onSort: (i, asc) => _sortByDate(
                         (m) {
-                          final raw = (m['date_creation_iso'] ?? m['date_creation'] ?? '').toString();
-                          return DateTime.tryParse(raw) ?? _parseMissionDate(raw);
+                          final raw =
+                              (m['date_creation_iso'] ??
+                                      m['date_creation'] ??
+                                      '')
+                                  .toString();
+                          return DateTime.tryParse(raw) ??
+                              _parseMissionDate(raw);
                         },
                         i,
                         asc,
@@ -1780,8 +1821,13 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       label: _sortableHeader('Date modification'),
                       onSort: (i, asc) => _sortByDate(
                         (m) {
-                          final raw = (m['date_modification_iso'] ?? m['date_modification'] ?? '').toString();
-                          return DateTime.tryParse(raw) ?? _parseMissionDate(raw);
+                          final raw =
+                              (m['date_modification_iso'] ??
+                                      m['date_modification'] ??
+                                      '')
+                                  .toString();
+                          return DateTime.tryParse(raw) ??
+                              _parseMissionDate(raw);
                         },
                         i,
                         asc,
@@ -1808,9 +1854,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   final ref = (m['reference_devis'] ?? '').toString();
                   final libelle = (m['label'] ?? '').toString();
                   final langue = (m['produit_ref'] ?? '').toString();
-                      final dateMission = (m['datemission'] ?? '').toString();
-                      final heureDebut = (m['heuredebutmission'] ?? '').toString();
-                      final duree = (m['dureemission'] ?? '').toString();
+                  final dateMission = (m['datemission'] ?? '').toString();
+                  final heureDebut = (m['heuredebutmission'] ?? '').toString();
+                  final duree = (m['dureemission'] ?? '').toString();
                   final client = (m['client_name'] ?? '').toString();
                   final prenomDemandeur = (m['prenom_demandeur'] ?? '')
                       .toString();
@@ -1828,10 +1874,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   final dateCrea =
                       (m['date_creation_iso'] ?? m['date_creation'] ?? '')
                           .toString();
-                    final dateModif =
-                      (m['date_modification_iso'] ?? m['date_modification'] ?? '')
-                        .toString();
-                    final updatedBy = (m['updated_by'] ?? '').toString();
+                  final dateModif =
+                      (m['date_modification_iso'] ??
+                              m['date_modification'] ??
+                              '')
+                          .toString();
+                  final updatedBy = (m['updated_by'] ?? '').toString();
                   final statutTxt = (m['mission_status'] ?? '').toString();
                   final cells = <DataCell>[
                     DataCell(
@@ -1913,13 +1961,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     );
                   }
                   if (_visibleColumns['statut'] ?? true) {
-                    final displayStatus = statutTxt.isEmpty ? '—' : _labelForStatus(statutTxt);
-                    cells.add(
-                      _cell(
-                        displayStatus,
-                        keyWidth: 'statut',
-                      ),
-                    );
+                    final displayStatus = statutTxt.isEmpty
+                        ? '—'
+                        : _labelForStatus(statutTxt);
+                    cells.add(_cell(displayStatus, keyWidth: 'statut'));
                   }
                   if (_visibleColumns['createur'] ?? true) {
                     cells.add(
@@ -1967,7 +2012,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                                   size: 20,
                                 ),
                                 tooltip: 'Modifier',
-                                onPressed: () => _showMissionFormDialog(mission: m),
+                                onPressed: () =>
+                                    _showMissionFormDialog(mission: m),
                               ),
                               const SizedBox(width: 4),
                               IconButton(
@@ -1981,31 +2027,50 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                                   final confirm = await showDialog<bool>(
                                     context: context,
                                     builder: (ctx) => AlertDialog(
-                                      title: const Text('Supprimer la mission ?'),
-                                      content: const Text('Cette action est irréversible.'),
+                                      title: const Text(
+                                        'Supprimer la mission ?',
+                                      ),
+                                      content: const Text(
+                                        'Cette action est irréversible.',
+                                      ),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.pop(ctx, false),
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, false),
                                           child: const Text('Annuler'),
                                         ),
                                         ElevatedButton(
-                                          onPressed: () => Navigator.pop(ctx, true),
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, true),
                                           child: const Text('Supprimer'),
                                         ),
                                       ],
                                     ),
                                   );
                                   if (confirm == true) {
-                                    final ok = await MissionService.deleteMission(rowId);
+                                    final ok =
+                                        await MissionService.deleteMission(
+                                          rowId,
+                                        );
                                     if (!mounted) return;
                                     if (ok) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Mission supprimée')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Mission supprimée'),
+                                        ),
                                       );
                                       _load();
                                     } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Échec de la suppression')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Échec de la suppression',
+                                          ),
+                                        ),
                                       );
                                     }
                                   }
@@ -2073,9 +2138,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
             : Row(
                 children: [
                   _buildSidebar(spacing),
-                  Expanded(
-                    child: _buildTableScreen(spacing),
-                  ),
+                  Expanded(child: _buildTableScreen(spacing)),
                 ],
               ),
       ),
@@ -2127,7 +2190,8 @@ class _MissionFormPanel extends StatefulWidget {
   final int? Function(String input) parseDurationMinutes;
   final DateTime? Function(String date, String time) parseDateTimeInput;
   final String Function(DateTime dt) formatDateTimeForApi;
-  final String Function(String? message, {required bool isCreation}) friendlyMissionError;
+  final String Function(String? message, {required bool isCreation})
+  friendlyMissionError;
   final void Function(bool created)? onSuccess;
   final VoidCallback? onCancel;
   final bool embedded;
@@ -2202,17 +2266,31 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
 
   void _initializeControllers() {
     final mission = widget.mission;
-    _missionId = int.tryParse((mission?['rowid'] ?? mission?['id'] ?? '0').toString());
-    _langueCtrl = TextEditingController(text: (mission?['produit_ref'] ?? '').toString());
-    _dateCtrl = TextEditingController(text: (mission?['datemission'] ?? '').toString());
-    _heureCtrl = TextEditingController(text: (mission?['heuredebutmission'] ?? '').toString());
-    _dureeCtrl = TextEditingController(text: (mission?['dureemission'] ?? '').toString());
-    _labelCtrl = TextEditingController(text: (mission?['label'] ?? '').toString());
+    _missionId = int.tryParse(
+      (mission?['rowid'] ?? mission?['id'] ?? '0').toString(),
+    );
+    _langueCtrl = TextEditingController(
+      text: (mission?['produit_ref'] ?? '').toString(),
+    );
+    _dateCtrl = TextEditingController(
+      text: (mission?['datemission'] ?? '').toString(),
+    );
+    _heureCtrl = TextEditingController(
+      text: (mission?['heuredebutmission'] ?? '').toString(),
+    );
+    _dureeCtrl = TextEditingController(
+      text: (mission?['dureemission'] ?? '').toString(),
+    );
+    _labelCtrl = TextEditingController(
+      text: (mission?['label'] ?? '').toString(),
+    );
     _commentaireCtrl = TextEditingController(
-      text: (mission?['commentaires'] ?? mission?['description'] ?? '').toString(),
+      text: (mission?['commentaires'] ?? mission?['description'] ?? '')
+          .toString(),
     );
 
-    _selectedLanguageRef = (mission?['produit_ref'] ?? '').toString().trim().isEmpty
+    _selectedLanguageRef =
+        (mission?['produit_ref'] ?? '').toString().trim().isEmpty
         ? null
         : (mission?['produit_ref'] ?? '').toString().trim();
 
@@ -2226,9 +2304,12 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     }
 
     _selectedInterpreterId = int.tryParse(
-      (mission?['nominterprete'] ?? mission?['interpreter_id'] ?? '').toString(),
+      (mission?['nominterprete'] ?? mission?['interpreter_id'] ?? '')
+          .toString(),
     );
-    _initialInterpreterName = (mission?['interpreter_name'] ?? '').toString().trim();
+    _initialInterpreterName = (mission?['interpreter_name'] ?? '')
+        .toString()
+        .trim();
 
     _selectedClientId = int.tryParse(
       (mission?['client_id'] ?? mission?['fk_soc'] ?? '').toString(),
@@ -2239,7 +2320,10 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     );
     final prenom = (mission?['prenom_demandeur'] ?? '').toString().trim();
     final nom = (mission?['nom_demandeur'] ?? '').toString().trim();
-    final combined = [prenom, nom].where((part) => part.isNotEmpty).join(' ').trim();
+    final combined = [
+      prenom,
+      nom,
+    ].where((part) => part.isNotEmpty).join(' ').trim();
     _initialContactName = combined.isNotEmpty
         ? combined
         : (mission?['contactdemandeur_name'] ?? '').toString().trim();
@@ -2247,26 +2331,28 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     _clientCtrl = TextEditingController(
       text: (_selectedClientId != null && _selectedClientId! > 0)
           ? (_initialClientName.isEmpty
-              ? 'Client #${_selectedClientId!}'
-              : _initialClientName)
+                ? 'Client #${_selectedClientId!}'
+                : _initialClientName)
           : '',
     );
     _contactCtrl = TextEditingController(
       text: (_selectedContactId != null && _selectedContactId! > 0)
           ? (_initialContactName.isEmpty
-              ? 'Contact #${_selectedContactId!}'
-              : _initialContactName)
+                ? 'Contact #${_selectedContactId!}'
+                : _initialContactName)
           : '',
     );
     _interpreterCtrl = TextEditingController(
       text: (_selectedInterpreterId != null && _selectedInterpreterId! > 0)
           ? (_initialInterpreterName.isEmpty
-              ? 'Interprète #${_selectedInterpreterId!}'
-              : _initialInterpreterName)
+                ? 'Interprète #${_selectedInterpreterId!}'
+                : _initialInterpreterName)
           : '',
     );
 
-    _selectedMissionTypes = widget.decodeMissionTypes(mission?['mission_types']).toSet();
+    _selectedMissionTypes = widget
+        .decodeMissionTypes(mission?['mission_types'])
+        .toSet();
     if (_selectedMissionTypes.isEmpty &&
         widget.missionTypeChoices.contains('Interprétariat')) {
       _selectedMissionTypes.add('Interprétariat');
@@ -2286,10 +2372,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
       return a.compareTo(b);
     }
 
-    _statusCodes = statusCodeSet
-        .where((code) => code.trim().isNotEmpty)
-        .toList()
-      ..sort(compareStatus);
+    _statusCodes =
+        statusCodeSet.where((code) => code.trim().isNotEmpty).toList()
+          ..sort(compareStatus);
     if (_statusCodes.isEmpty) {
       _statusCodes.add('1');
     }
@@ -2348,7 +2433,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
       _contactOptions = <ContactInfo>[];
     });
     try {
-      final fetched = await ContactService.getContactsForClient(clientId: clientId);
+      final fetched = await ContactService.getContactsForClient(
+        clientId: clientId,
+      );
       if (!mounted) return;
       setState(() {
         _contactsCache[clientId] = fetched;
@@ -2385,15 +2472,20 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   }
 
   List<_AutocompleteEntry<int>> _buildClientEntries() {
-    final entries = _clientSummaries
-        .map(
-          (client) => _AutocompleteEntry<int>(
-            value: client.id,
-            label: client.name.isEmpty ? 'Client #${client.id}' : client.name,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    final entries =
+        _clientSummaries
+            .map(
+              (client) => _AutocompleteEntry<int>(
+                value: client.id,
+                label: client.name.isEmpty
+                    ? 'Client #${client.id}'
+                    : client.name,
+              ),
+            )
+            .toList()
+          ..sort(
+            (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+          );
     if (_selectedClientId != null &&
         _selectedClientId! > 0 &&
         !entries.any((entry) => entry.value == _selectedClientId)) {
@@ -2410,10 +2502,12 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
 
   List<_AutocompleteEntry<int>> _buildContactEntries() {
     final entries = _contactOptions
-        .map((contact) => _AutocompleteEntry<int>(
-              value: contact.id,
-              label: contact.displayName,
-            ))
+        .map(
+          (contact) => _AutocompleteEntry<int>(
+            value: contact.id,
+            label: contact.displayName,
+          ),
+        )
         .toList();
     if (_selectedContactId != null &&
         _selectedContactId! > 0 &&
@@ -2430,17 +2524,20 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   }
 
   List<_AutocompleteEntry<int>> _buildInterpreterEntries() {
-    final entries = _interpretes
-        .map((entry) {
-          final id = int.tryParse((entry['id'] ?? '').toString());
-          if (id == null) return null;
-          final rawName = (entry['display_name'] ?? '').toString().trim();
-          final label = rawName.isEmpty ? 'Interprète #$id' : rawName;
-          return _AutocompleteEntry<int>(value: id, label: label);
-        })
-        .whereType<_AutocompleteEntry<int>>()
-        .toList()
-      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    final entries =
+        _interpretes
+            .map((entry) {
+              final id = int.tryParse((entry['id'] ?? '').toString());
+              if (id == null) return null;
+              final rawName = (entry['display_name'] ?? '').toString().trim();
+              final label = rawName.isEmpty ? 'Interprète #$id' : rawName;
+              return _AutocompleteEntry<int>(value: id, label: label);
+            })
+            .whereType<_AutocompleteEntry<int>>()
+            .toList()
+          ..sort(
+            (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+          );
     if (_selectedInterpreterId != null &&
         _selectedInterpreterId! > 0 &&
         !entries.any((entry) => entry.value == _selectedInterpreterId)) {
@@ -2449,7 +2546,10 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
           : '$_initialInterpreterName (hors liste)';
       entries.insert(
         0,
-        _AutocompleteEntry<int>(value: _selectedInterpreterId!, label: fallback),
+        _AutocompleteEntry<int>(
+          value: _selectedInterpreterId!,
+          label: fallback,
+        ),
       );
     }
     return entries;
@@ -2467,17 +2567,47 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   List<_AutocompleteEntry<String>> _buildStatusEntries() {
     return _statusCodes
         .where((code) => code.trim().isNotEmpty)
-        .map((code) => _AutocompleteEntry<String>(
-              value: code,
-              label: widget.labelForStatus(code),
-            ))
+        .map(
+          (code) => _AutocompleteEntry<String>(
+            value: code,
+            label: widget.labelForStatus(code),
+          ),
+        )
         .toList();
   }
 
-  Future<void> _handleSubmit() async {
+  String? _validateMissionForm() {
+    if ((_selectedContactId ?? 0) <= 0) {
+      return 'Sélectionnez une personne demandeuse';
+    }
+    if ((_selectedClientId ?? 0) <= 0) {
+      return 'Sélectionnez une société demandeuse';
+    }
     if ((_selectedInterpreterId ?? 0) <= 0) {
+      return 'Sélectionnez un interprète';
+    }
+
+    final langue = _langueCtrl.text.trim();
+    final langueRef = _selectedLanguageRef?.trim() ?? '';
+    if (langue.isEmpty && langueRef.isEmpty) {
+      return 'Renseignez une langue';
+    }
+
+    final dateText = _dateCtrl.text.trim();
+    final effectiveDate =
+        _selectedMissionDate ?? widget.parseMissionDate(dateText);
+    if (dateText.isEmpty || effectiveDate == null) {
+      return 'Renseignez une date de mission valide';
+    }
+
+    return null;
+  }
+
+  Future<void> _handleSubmit() async {
+    final validationMessage = _validateMissionForm();
+    if (validationMessage != null) {
       setState(() {
-        _validationMessage = 'Sélectionnez un interprète';
+        _validationMessage = validationMessage;
       });
       return;
     }
@@ -2525,7 +2655,8 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     }
 
     final dateText = _dateCtrl.text.trim();
-    final DateTime? effectiveDate = _selectedMissionDate ?? widget.parseMissionDate(dateText);
+    final DateTime? effectiveDate =
+        _selectedMissionDate ?? widget.parseMissionDate(dateText);
     String dateForComputation = '';
     if (effectiveDate != null) {
       dateForComputation = widget.dateApiFormat.format(effectiveDate);
@@ -2536,7 +2667,8 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     }
 
     final heureText = _heureCtrl.text.trim();
-    final TimeOfDay? effectiveTime = _selectedMissionTime ?? widget.parseMissionTime(heureText);
+    final TimeOfDay? effectiveTime =
+        _selectedMissionTime ?? widget.parseMissionTime(heureText);
     String heureForComputation = '';
     if (effectiveTime != null) {
       heureForComputation = widget.formatTimeOfDay(effectiveTime);
@@ -2546,15 +2678,20 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
       payload['heuredebutmission'] = heureText;
     }
 
-    final parsedDuration = widget.parseDurationMinutes(_dureeCtrl.text.trim());
-    if (parsedDuration == null) {
+    final durationText = _dureeCtrl.text.trim();
+    final parsedDuration = durationText.isEmpty
+        ? null
+        : widget.parseDurationMinutes(durationText);
+    if (durationText.isNotEmpty && parsedDuration == null) {
       setState(() => _submitting = false);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Durée invalide. Utilisez 3h, 2h30, 2:30 ou 150.')),
+        const SnackBar(
+          content: Text('Durée invalide. Utilisez 3h, 2h30, 2:30 ou 150.'),
+        ),
       );
       return;
     }
-    if (parsedDuration > 0) {
+    if ((parsedDuration ?? 0) > 0) {
       payload['dureemission'] = parsedDuration;
     }
     if (_selectedStatusCode.isNotEmpty) {
@@ -2563,12 +2700,15 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     }
     payload['mission_types'] = _selectedMissionTypes.toList();
 
-    final start = widget.parseDateTimeInput(dateForComputation, heureForComputation);
+    final start = widget.parseDateTimeInput(
+      dateForComputation,
+      heureForComputation,
+    );
     if (start != null) {
       payload['debutmission'] = widget.formatDateTimeForApi(start);
-      if (parsedDuration > 0) {
+      if ((parsedDuration ?? 0) > 0) {
         payload['finmission'] = widget.formatDateTimeForApi(
-          start.add(Duration(minutes: parsedDuration)),
+          start.add(Duration(minutes: parsedDuration!)),
         );
       }
     }
@@ -2591,14 +2731,19 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     });
     if (result.success) {
       messenger.showSnackBar(
-        SnackBar(content: Text(isCreation ? 'Mission créée' : 'Mission mise à jour')),
+        SnackBar(
+          content: Text(isCreation ? 'Mission créée' : 'Mission mise à jour'),
+        ),
       );
       widget.onSuccess?.call(isCreation);
       if (widget.embedded && isCreation) {
         _resetForm();
       }
     } else {
-      final msg = widget.friendlyMissionError(result.message, isCreation: isCreation);
+      final msg = widget.friendlyMissionError(
+        result.message,
+        isCreation: isCreation,
+      );
       messenger.showSnackBar(SnackBar(content: Text(msg)));
     }
   }
@@ -2613,7 +2758,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     _clientCtrl.clear();
     _contactCtrl.clear();
     _interpreterCtrl.clear();
-    _statusCtrl.text = widget.labelForStatus(_statusCodes.isEmpty ? '1' : _statusCodes.first);
+    _statusCtrl.text = widget.labelForStatus(
+      _statusCodes.isEmpty ? '1' : _statusCodes.first,
+    );
     _selectedInterpreterId = null;
     _selectedClientId = null;
     _selectedContactId = null;
@@ -2629,10 +2776,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   }
 
   Widget _buildSectionTitle(String text) {
-    return Text(
-      text,
-      style: const TextStyle(fontWeight: FontWeight.w700),
-    );
+    return Text(text, style: const TextStyle(fontWeight: FontWeight.w700));
   }
 
   @override
@@ -2671,7 +2815,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         spacing: 8,
                         runSpacing: 8,
                         children: widget.missionTypeChoices.map((choice) {
-                          final bool selected = _selectedMissionTypes.contains(choice);
+                          final bool selected = _selectedMissionTypes.contains(
+                            choice,
+                          );
                           return FilterChip(
                             label: Text(choice),
                             selected: selected,
@@ -2723,12 +2869,14 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                       if (picked != null) {
                         setState(() {
                           _selectedMissionDate = picked;
-                          _dateCtrl.text = widget.dateDisplayFormat.format(picked);
+                          _dateCtrl.text = widget.dateDisplayFormat.format(
+                            picked,
+                          );
                         });
                       }
                     },
                     decoration: const InputDecoration(
-                      labelText: 'Date de la mission (JJ/MM/AAAA)',
+                      labelText: 'Date de la mission * (JJ/MM/AAAA)',
                       isDense: true,
                       suffixIcon: Icon(Icons.calendar_today),
                     ),
@@ -2744,7 +2892,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         context: context,
                         initialTime: _selectedMissionTime ?? TimeOfDay.now(),
                         builder: (context, child) => MediaQuery(
-                          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                          data: MediaQuery.of(
+                            context,
+                          ).copyWith(alwaysUse24HourFormat: true),
                           child: child!,
                         ),
                       );
@@ -2788,7 +2938,8 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                     final query = textEditingValue.text.trim().toLowerCase();
                     if (query.isEmpty) return clientEntries;
                     return clientEntries.where(
-                      (option) => option.label.toLowerCase().contains(query) ||
+                      (option) =>
+                          option.label.toLowerCase().contains(query) ||
                           option.value.toString().contains(query),
                     );
                   },
@@ -2802,32 +2953,39 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                     });
                     _loadContactsForClient(option.value);
                   },
-                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                    if (!_clientFieldListenerAttached) {
-                      textEditingController.value = _clientCtrl.value;
-                      textEditingController.addListener(() {
-                        if (_clientCtrl.value != textEditingController.value) {
-                          setState(() {
-                            _clientCtrl.value = textEditingController.value;
-                            _selectedClientId = null;
-                            _selectedContactId = null;
-                            _contactOptions = <ContactInfo>[];
-                            _contactCtrl.text = '';
+                  fieldViewBuilder:
+                      (
+                        context,
+                        textEditingController,
+                        focusNode,
+                        onFieldSubmitted,
+                      ) {
+                        if (!_clientFieldListenerAttached) {
+                          textEditingController.value = _clientCtrl.value;
+                          textEditingController.addListener(() {
+                            if (_clientCtrl.value !=
+                                textEditingController.value) {
+                              setState(() {
+                                _clientCtrl.value = textEditingController.value;
+                                _selectedClientId = null;
+                                _selectedContactId = null;
+                                _contactOptions = <ContactInfo>[];
+                                _contactCtrl.text = '';
+                              });
+                            }
                           });
+                          _clientFieldListenerAttached = true;
                         }
-                      });
-                      _clientFieldListenerAttached = true;
-                    }
-                    return TextField(
-                      controller: textEditingController,
-                      focusNode: focusNode,
-                      decoration: const InputDecoration(
-                        labelText: 'Société demandeuse',
-                        isDense: true,
-                        suffixIcon: Icon(Icons.arrow_drop_down),
-                      ),
-                    );
-                  },
+                        return TextField(
+                          controller: textEditingController,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Société demandeuse *',
+                            isDense: true,
+                            suffixIcon: Icon(Icons.arrow_drop_down),
+                          ),
+                        );
+                      },
                   optionsViewBuilder: (context, onSelected, options) {
                     final opts = options.toList();
                     if (opts.isEmpty) {
@@ -2881,29 +3039,37 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                       _contactCtrl.value = TextEditingValue(text: option.label);
                     });
                   },
-                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                    if (!_contactFieldListenerAttached) {
-                      textEditingController.value = _contactCtrl.value;
-                      textEditingController.addListener(() {
-                        if (_contactCtrl.value != textEditingController.value) {
-                          setState(() {
-                            _contactCtrl.value = textEditingController.value;
-                            _selectedContactId = null;
+                  fieldViewBuilder:
+                      (
+                        context,
+                        textEditingController,
+                        focusNode,
+                        onFieldSubmitted,
+                      ) {
+                        if (!_contactFieldListenerAttached) {
+                          textEditingController.value = _contactCtrl.value;
+                          textEditingController.addListener(() {
+                            if (_contactCtrl.value !=
+                                textEditingController.value) {
+                              setState(() {
+                                _contactCtrl.value =
+                                    textEditingController.value;
+                                _selectedContactId = null;
+                              });
+                            }
                           });
+                          _contactFieldListenerAttached = true;
                         }
-                      });
-                      _contactFieldListenerAttached = true;
-                    }
-                    return TextField(
-                      controller: textEditingController,
-                      focusNode: focusNode,
-                      decoration: const InputDecoration(
-                        labelText: 'Personne demandeuse',
-                        isDense: true,
-                        suffixIcon: Icon(Icons.arrow_drop_down),
-                      ),
-                    );
-                  },
+                        return TextField(
+                          controller: textEditingController,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Personne demandeuse *',
+                            isDense: true,
+                            suffixIcon: Icon(Icons.arrow_drop_down),
+                          ),
+                        );
+                      },
                   optionsViewBuilder: (context, onSelected, options) {
                     final opts = options.toList();
                     if (opts.isEmpty) {
@@ -2955,7 +3121,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         initialValue: _interpreterCtrl.value,
                         displayStringForOption: (option) => option.label,
                         optionsBuilder: (textEditingValue) {
-                          final query = textEditingValue.text.trim().toLowerCase();
+                          final query = textEditingValue.text
+                              .trim()
+                              .toLowerCase();
                           if (query.isEmpty) return interpreterEntries;
                           return interpreterEntries.where(
                             (option) =>
@@ -2966,33 +3134,44 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         onSelected: (option) {
                           setState(() {
                             _selectedInterpreterId = option.value;
-                            _interpreterCtrl.value = TextEditingValue(text: option.label);
+                            _interpreterCtrl.value = TextEditingValue(
+                              text: option.label,
+                            );
                             _validationMessage = null;
                           });
                         },
-                        fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                          if (!_interpreterFieldListenerAttached) {
-                            textEditingController.value = _interpreterCtrl.value;
-                            textEditingController.addListener(() {
-                              if (_interpreterCtrl.value != textEditingController.value) {
-                                setState(() {
-                                  _interpreterCtrl.value = textEditingController.value;
-                                  _selectedInterpreterId = null;
+                        fieldViewBuilder:
+                            (
+                              context,
+                              textEditingController,
+                              focusNode,
+                              onFieldSubmitted,
+                            ) {
+                              if (!_interpreterFieldListenerAttached) {
+                                textEditingController.value =
+                                    _interpreterCtrl.value;
+                                textEditingController.addListener(() {
+                                  if (_interpreterCtrl.value !=
+                                      textEditingController.value) {
+                                    setState(() {
+                                      _interpreterCtrl.value =
+                                          textEditingController.value;
+                                      _selectedInterpreterId = null;
+                                    });
+                                  }
                                 });
+                                _interpreterFieldListenerAttached = true;
                               }
-                            });
-                            _interpreterFieldListenerAttached = true;
-                          }
-                          return TextField(
-                            controller: textEditingController,
-                            focusNode: focusNode,
-                            decoration: const InputDecoration(
-                              labelText: 'Interprète',
-                              isDense: true,
-                              suffixIcon: Icon(Icons.arrow_drop_down),
-                            ),
-                          );
-                        },
+                              return TextField(
+                                controller: textEditingController,
+                                focusNode: focusNode,
+                                decoration: const InputDecoration(
+                                  labelText: 'Interprète *',
+                                  isDense: true,
+                                  suffixIcon: Icon(Icons.arrow_drop_down),
+                                ),
+                              );
+                            },
                         optionsViewBuilder: (context, onSelected, options) {
                           final opts = options.toList();
                           if (opts.isEmpty) {
@@ -3036,9 +3215,13 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         initialValue: _langueCtrl.value,
                         displayStringForOption: (option) => option.label,
                         optionsBuilder: (textEditingValue) {
-                          final query = textEditingValue.text.trim().toLowerCase();
+                          final query = textEditingValue.text
+                              .trim()
+                              .toLowerCase();
                           if (languageEntries.isEmpty) {
-                            return const Iterable<_AutocompleteEntry<String>>.empty();
+                            return const Iterable<
+                              _AutocompleteEntry<String>
+                            >.empty();
                           }
                           if (query.isEmpty) {
                             return languageEntries;
@@ -3054,29 +3237,37 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                             _langueCtrl.text = option.label;
                           });
                         },
-                        fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                          if (!_langueFieldListenerAttached) {
-                            textEditingController.value = _langueCtrl.value;
-                            textEditingController.addListener(() {
-                              if (_langueCtrl.value != textEditingController.value) {
-                                setState(() {
-                                  _langueCtrl.value = textEditingController.value;
-                                  _selectedLanguageRef = null;
+                        fieldViewBuilder:
+                            (
+                              context,
+                              textEditingController,
+                              focusNode,
+                              onFieldSubmitted,
+                            ) {
+                              if (!_langueFieldListenerAttached) {
+                                textEditingController.value = _langueCtrl.value;
+                                textEditingController.addListener(() {
+                                  if (_langueCtrl.value !=
+                                      textEditingController.value) {
+                                    setState(() {
+                                      _langueCtrl.value =
+                                          textEditingController.value;
+                                      _selectedLanguageRef = null;
+                                    });
+                                  }
                                 });
+                                _langueFieldListenerAttached = true;
                               }
-                            });
-                            _langueFieldListenerAttached = true;
-                          }
-                          return TextField(
-                            controller: textEditingController,
-                            focusNode: focusNode,
-                            decoration: const InputDecoration(
-                              labelText: 'Langue (ref produit)',
-                              isDense: true,
-                              suffixIcon: Icon(Icons.arrow_drop_down),
-                            ),
-                          );
-                        },
+                              return TextField(
+                                controller: textEditingController,
+                                focusNode: focusNode,
+                                decoration: const InputDecoration(
+                                  labelText: 'Langue * (ref produit)',
+                                  isDense: true,
+                                  suffixIcon: Icon(Icons.arrow_drop_down),
+                                ),
+                              );
+                            },
                         optionsViewBuilder: (context, onSelected, options) {
                           final opts = options.toList();
                           if (opts.isEmpty) {
@@ -3147,29 +3338,36 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                       _statusCtrl.value = TextEditingValue(text: option.label);
                     });
                   },
-                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                    if (!_statusFieldListenerAttached) {
-                      textEditingController.value = _statusCtrl.value;
-                      textEditingController.addListener(() {
-                        if (_statusCtrl.value != textEditingController.value) {
-                          setState(() {
-                            _statusCtrl.value = textEditingController.value;
-                            _selectedStatusCode = '';
+                  fieldViewBuilder:
+                      (
+                        context,
+                        textEditingController,
+                        focusNode,
+                        onFieldSubmitted,
+                      ) {
+                        if (!_statusFieldListenerAttached) {
+                          textEditingController.value = _statusCtrl.value;
+                          textEditingController.addListener(() {
+                            if (_statusCtrl.value !=
+                                textEditingController.value) {
+                              setState(() {
+                                _statusCtrl.value = textEditingController.value;
+                                _selectedStatusCode = '';
+                              });
+                            }
                           });
+                          _statusFieldListenerAttached = true;
                         }
-                      });
-                      _statusFieldListenerAttached = true;
-                    }
-                    return TextField(
-                      controller: textEditingController,
-                      focusNode: focusNode,
-                      decoration: const InputDecoration(
-                        labelText: 'Statut mission',
-                        isDense: true,
-                        suffixIcon: Icon(Icons.arrow_drop_down),
-                      ),
-                    );
-                  },
+                        return TextField(
+                          controller: textEditingController,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Statut mission',
+                            isDense: true,
+                            suffixIcon: Icon(Icons.arrow_drop_down),
+                          ),
+                        );
+                      },
                   optionsViewBuilder: (context, onSelected, options) {
                     final opts = options.toList();
                     if (opts.isEmpty) {
