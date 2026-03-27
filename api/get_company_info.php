@@ -16,6 +16,87 @@ function fetchCompanyTimestamps(PDO $pdo, int $entityId): array {
     ];
 }
 
+function normalizeBankField(?string $value): string {
+    return trim((string) $value);
+}
+
+function composeBankIban(array $row): string {
+    $iban = normalizeBankField($row['iban_prefix'] ?? '');
+    if ($iban !== '') {
+        return $iban;
+    }
+
+    $parts = [
+        normalizeBankField($row['country_iban'] ?? ''),
+        normalizeBankField($row['cle_iban'] ?? ''),
+        normalizeBankField($row['code_banque'] ?? ''),
+        normalizeBankField($row['code_guichet'] ?? ''),
+        normalizeBankField($row['number'] ?? ''),
+        normalizeBankField($row['cle_rib'] ?? ''),
+    ];
+    $parts = array_values(array_filter($parts, static fn ($part) => $part !== ''));
+
+    return implode(' ', $parts);
+}
+
+function fetchPrimaryBankAccount(PDO $pdo, int $entityId): array {
+    $empty = [
+        'bankLabel' => '',
+        'bankName' => '',
+        'bankCode' => '',
+        'bankBranchCode' => '',
+        'bankAccountNumber' => '',
+        'bankRibKey' => '',
+        'bankBic' => '',
+        'bankIban' => '',
+        'bankDomiciliation' => '',
+        'bankAccountHolder' => '',
+        'bankOwnerAddress' => '',
+        'bankOwnerPostalCode' => '',
+        'bankOwnerCity' => '',
+    ];
+
+    $stmt = $pdo->prepare(
+        "SELECT label, bank, code_banque, code_guichet, number, cle_rib, bic, iban_prefix, country_iban, cle_iban, domiciliation, proprio, owner_address, owner_zip, owner_town, courant, clos\n"
+        . "FROM llx_bank_account\n"
+        . "WHERE entity = :entity AND clos = 0\n"
+            . "ORDER BY CASE\n"
+            . "    WHEN UPPER(TRIM(COALESCE(bank, ''))) = 'BANQUE POPULAIRE RIVES DE PARIS' THEN 0\n"
+            . "    WHEN UPPER(TRIM(COALESCE(label, ''))) IN ('BP RIVES DE PARIS', 'RIB_BANQUE_P') THEN 0\n"
+            . "    ELSE 1\n"
+            . "  END ASC,\n"
+            . "  courant DESC,\n"
+        . "  ((CASE WHEN TRIM(COALESCE(iban_prefix, '')) <> '' THEN 1 ELSE 0 END)\n"
+        . "   + (CASE WHEN TRIM(COALESCE(bic, '')) <> '' THEN 1 ELSE 0 END)\n"
+        . "   + (CASE WHEN TRIM(COALESCE(proprio, '')) <> '' THEN 1 ELSE 0 END)\n"
+        . "   + (CASE WHEN TRIM(COALESCE(number, '')) <> '' THEN 1 ELSE 0 END)) DESC,\n"
+        . "  rowid ASC\n"
+        . "LIMIT 1"
+    );
+    $stmt->execute([':entity' => $entityId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        return $empty;
+    }
+
+    return [
+        'bankLabel' => normalizeBankField($row['label'] ?? ''),
+        'bankName' => normalizeBankField($row['bank'] ?? ''),
+        'bankCode' => normalizeBankField($row['code_banque'] ?? ''),
+        'bankBranchCode' => normalizeBankField($row['code_guichet'] ?? ''),
+        'bankAccountNumber' => normalizeBankField($row['number'] ?? ''),
+        'bankRibKey' => normalizeBankField($row['cle_rib'] ?? ''),
+        'bankBic' => normalizeBankField($row['bic'] ?? ''),
+        'bankIban' => composeBankIban($row),
+        'bankDomiciliation' => normalizeBankField($row['domiciliation'] ?? ''),
+        'bankAccountHolder' => normalizeBankField($row['proprio'] ?? ''),
+        'bankOwnerAddress' => normalizeBankField($row['owner_address'] ?? ''),
+        'bankOwnerPostalCode' => normalizeBankField($row['owner_zip'] ?? ''),
+        'bankOwnerCity' => normalizeBankField($row['owner_town'] ?? ''),
+    ];
+}
+
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
@@ -37,6 +118,19 @@ $defaults = [
     'email' => 'contact@planettraduction.fr',
     'website' => 'https://planet-traduction.fr/',
     'logoUrl' => '',
+    'bankLabel' => '',
+    'bankName' => '',
+    'bankCode' => '',
+    'bankBranchCode' => '',
+    'bankAccountNumber' => '',
+    'bankRibKey' => '',
+    'bankBic' => '',
+    'bankIban' => '',
+    'bankDomiciliation' => '',
+    'bankAccountHolder' => '',
+    'bankOwnerAddress' => '',
+    'bankOwnerPostalCode' => '',
+    'bankOwnerCity' => '',
 ];
 
 $mapping = [
@@ -81,6 +175,7 @@ try {
     }
 
     $meta = fetchCompanyTimestamps($pdo, $entityId);
+    $company = array_merge($company, fetchPrimaryBankAccount($pdo, $entityId));
 
     echo json_encode([
         'success' => true,

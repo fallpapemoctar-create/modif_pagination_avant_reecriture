@@ -9,6 +9,19 @@ class CompanyInfo {
   final String email;
   final String website;
   final String logoUrl;
+  final String bankLabel;
+  final String bankName;
+  final String bankCode;
+  final String bankBranchCode;
+  final String bankAccountNumber;
+  final String bankRibKey;
+  final String bankBic;
+  final String bankIban;
+  final String bankDomiciliation;
+  final String bankAccountHolder;
+  final String bankOwnerAddress;
+  final String bankOwnerPostalCode;
+  final String bankOwnerCity;
 
   const CompanyInfo({
     required this.name,
@@ -21,6 +34,19 @@ class CompanyInfo {
     required this.email,
     required this.website,
     required this.logoUrl,
+    this.bankLabel = '',
+    this.bankName = '',
+    this.bankCode = '',
+    this.bankBranchCode = '',
+    this.bankAccountNumber = '',
+    this.bankRibKey = '',
+    this.bankBic = '',
+    this.bankIban = '',
+    this.bankDomiciliation = '',
+    this.bankAccountHolder = '',
+    this.bankOwnerAddress = '',
+    this.bankOwnerPostalCode = '',
+    this.bankOwnerCity = '',
   });
 
   factory CompanyInfo.fromJson(Map<String, dynamic> json) {
@@ -35,6 +61,19 @@ class CompanyInfo {
       email: (json['email'] ?? '').toString(),
       website: (json['website'] ?? '').toString(),
       logoUrl: (json['logoUrl'] ?? '').toString(),
+      bankLabel: (json['bankLabel'] ?? '').toString(),
+      bankName: (json['bankName'] ?? '').toString(),
+      bankCode: (json['bankCode'] ?? '').toString(),
+      bankBranchCode: (json['bankBranchCode'] ?? '').toString(),
+      bankAccountNumber: (json['bankAccountNumber'] ?? '').toString(),
+      bankRibKey: (json['bankRibKey'] ?? '').toString(),
+      bankBic: (json['bankBic'] ?? '').toString(),
+      bankIban: (json['bankIban'] ?? '').toString(),
+      bankDomiciliation: (json['bankDomiciliation'] ?? '').toString(),
+      bankAccountHolder: (json['bankAccountHolder'] ?? '').toString(),
+      bankOwnerAddress: (json['bankOwnerAddress'] ?? '').toString(),
+      bankOwnerPostalCode: (json['bankOwnerPostalCode'] ?? '').toString(),
+      bankOwnerCity: (json['bankOwnerCity'] ?? '').toString(),
     );
   }
 
@@ -50,6 +89,19 @@ class CompanyInfo {
       'email': email,
       'website': website,
       'logoUrl': logoUrl,
+      'bankLabel': bankLabel,
+      'bankName': bankName,
+      'bankCode': bankCode,
+      'bankBranchCode': bankBranchCode,
+      'bankAccountNumber': bankAccountNumber,
+      'bankRibKey': bankRibKey,
+      'bankBic': bankBic,
+      'bankIban': bankIban,
+      'bankDomiciliation': bankDomiciliation,
+      'bankAccountHolder': bankAccountHolder,
+      'bankOwnerAddress': bankOwnerAddress,
+      'bankOwnerPostalCode': bankOwnerPostalCode,
+      'bankOwnerCity': bankOwnerCity,
     };
   }
 
@@ -64,6 +116,19 @@ class CompanyInfo {
     String? email,
     String? website,
     String? logoUrl,
+    String? bankLabel,
+    String? bankName,
+    String? bankCode,
+    String? bankBranchCode,
+    String? bankAccountNumber,
+    String? bankRibKey,
+    String? bankBic,
+    String? bankIban,
+    String? bankDomiciliation,
+    String? bankAccountHolder,
+    String? bankOwnerAddress,
+    String? bankOwnerPostalCode,
+    String? bankOwnerCity,
   }) {
     return CompanyInfo(
       name: name ?? this.name,
@@ -76,6 +141,19 @@ class CompanyInfo {
       email: email ?? this.email,
       website: website ?? this.website,
       logoUrl: logoUrl ?? this.logoUrl,
+      bankLabel: bankLabel ?? this.bankLabel,
+      bankName: bankName ?? this.bankName,
+      bankCode: bankCode ?? this.bankCode,
+      bankBranchCode: bankBranchCode ?? this.bankBranchCode,
+      bankAccountNumber: bankAccountNumber ?? this.bankAccountNumber,
+      bankRibKey: bankRibKey ?? this.bankRibKey,
+      bankBic: bankBic ?? this.bankBic,
+      bankIban: bankIban ?? this.bankIban,
+      bankDomiciliation: bankDomiciliation ?? this.bankDomiciliation,
+      bankAccountHolder: bankAccountHolder ?? this.bankAccountHolder,
+      bankOwnerAddress: bankOwnerAddress ?? this.bankOwnerAddress,
+      bankOwnerPostalCode: bankOwnerPostalCode ?? this.bankOwnerPostalCode,
+      bankOwnerCity: bankOwnerCity ?? this.bankOwnerCity,
     );
   }
 
@@ -91,6 +169,19 @@ class CompanyInfo {
       email: 'contact@planettraduction.fr',
       website: 'https://planet-traduction.fr/',
       logoUrl: '',
+      bankLabel: 'BP RIVES DE PARIS',
+      bankName: 'BANQUE POPULAIRE RIVES DE PARIS',
+      bankCode: '10207',
+      bankBranchCode: '00067',
+      bankAccountNumber: '24215114802',
+      bankRibKey: '10',
+      bankBic: 'CCBPFRPPMTG',
+      bankIban: 'FR76 1020 7000 6724 2151 1480 210',
+      bankDomiciliation: 'BPRIVES BRETIGNY (00067)',
+      bankAccountHolder: 'ASS PLANET TRADUCTION',
+      bankOwnerAddress: '13 CHEMIN DES CHAMPCUEILS',
+      bankOwnerPostalCode: '91220',
+      bankOwnerCity: 'BRETIGNY SUR ORGE',
     );
   }
 
@@ -102,4 +193,16 @@ class CompanyInfo {
     if (cityLine.isNotEmpty) lines.add(cityLine);
     return lines;
   }
+
+  bool get hasBankDetails =>
+      bankLabel.trim().isNotEmpty ||
+      bankName.trim().isNotEmpty ||
+      bankAccountHolder.trim().isNotEmpty ||
+      bankIban.trim().isNotEmpty ||
+      bankBic.trim().isNotEmpty;
+
+  String get bankOwnerCityLine => [
+        bankOwnerPostalCode.trim(),
+        bankOwnerCity.trim(),
+      ].where((part) => part.isNotEmpty).join(' ');
 }

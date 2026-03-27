@@ -91,6 +91,7 @@ class _CompanyInfoPageState extends State<CompanyInfoPage> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
+    final bankInfo = _current;
     final info = CompanyInfo(
       name: _nameCtrl.text.trim(),
       addressLine1: _address1Ctrl.text.trim(),
@@ -102,6 +103,19 @@ class _CompanyInfoPageState extends State<CompanyInfoPage> {
       email: _emailCtrl.text.trim(),
       website: _websiteCtrl.text.trim(),
       logoUrl: _logoUrlCtrl.text.trim(),
+      bankLabel: bankInfo?.bankLabel ?? '',
+      bankName: bankInfo?.bankName ?? '',
+      bankCode: bankInfo?.bankCode ?? '',
+      bankBranchCode: bankInfo?.bankBranchCode ?? '',
+      bankAccountNumber: bankInfo?.bankAccountNumber ?? '',
+      bankRibKey: bankInfo?.bankRibKey ?? '',
+      bankBic: bankInfo?.bankBic ?? '',
+      bankIban: bankInfo?.bankIban ?? '',
+      bankDomiciliation: bankInfo?.bankDomiciliation ?? '',
+      bankAccountHolder: bankInfo?.bankAccountHolder ?? '',
+      bankOwnerAddress: bankInfo?.bankOwnerAddress ?? '',
+      bankOwnerPostalCode: bankInfo?.bankOwnerPostalCode ?? '',
+      bankOwnerCity: bankInfo?.bankOwnerCity ?? '',
     );
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -251,6 +265,7 @@ class _CompanyInfoPageState extends State<CompanyInfoPage> {
   }
 
   Widget _buildPreviewCard() {
+    final bankInfo = _current;
     final info = CompanyInfo(
       name: _nameCtrl.text.trim().isEmpty ? 'Nom entreprise' : _nameCtrl.text.trim(),
       addressLine1: _address1Ctrl.text.trim(),
@@ -262,6 +277,19 @@ class _CompanyInfoPageState extends State<CompanyInfoPage> {
       email: _emailCtrl.text.trim(),
       website: _websiteCtrl.text.trim(),
       logoUrl: _logoUrlCtrl.text.trim(),
+      bankLabel: bankInfo?.bankLabel ?? '',
+      bankName: bankInfo?.bankName ?? '',
+      bankCode: bankInfo?.bankCode ?? '',
+      bankBranchCode: bankInfo?.bankBranchCode ?? '',
+      bankAccountNumber: bankInfo?.bankAccountNumber ?? '',
+      bankRibKey: bankInfo?.bankRibKey ?? '',
+      bankBic: bankInfo?.bankBic ?? '',
+      bankIban: bankInfo?.bankIban ?? '',
+      bankDomiciliation: bankInfo?.bankDomiciliation ?? '',
+      bankAccountHolder: bankInfo?.bankAccountHolder ?? '',
+      bankOwnerAddress: bankInfo?.bankOwnerAddress ?? '',
+      bankOwnerPostalCode: bankInfo?.bankOwnerPostalCode ?? '',
+      bankOwnerCity: bankInfo?.bankOwnerCity ?? '',
     );
 
     final lines = info.addressLines;
@@ -294,6 +322,15 @@ class _CompanyInfoPageState extends State<CompanyInfoPage> {
                   if (info.phone.isNotEmpty) Text('Tél. : ${info.phone}'),
                   if (info.email.isNotEmpty) Text('Email : ${info.email}'),
                   if (info.website.isNotEmpty) Text('Web : ${info.website}'),
+                  if (info.hasBankDetails) ...[
+                    const SizedBox(height: 10),
+                    Text('Coordonnées bancaires', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+                    if (info.bankLabel.trim().isNotEmpty) Text('Compte : ${info.bankLabel.trim()}'),
+                    if (info.bankName.trim().isNotEmpty) Text('Banque : ${info.bankName.trim()}'),
+                    if (info.bankAccountHolder.trim().isNotEmpty) Text('Titulaire : ${info.bankAccountHolder.trim()}'),
+                    if (info.bankIban.trim().isNotEmpty) Text('IBAN : ${info.bankIban.trim()}'),
+                    if (info.bankBic.trim().isNotEmpty) Text('BIC : ${info.bankBic.trim()}'),
+                  ],
                 ],
               ),
             ),

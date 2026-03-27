@@ -16,6 +16,7 @@ import '../core/brand_footer.dart';
 import '../core/models/invoice_line.dart';
 import '../core/responsive_helper.dart';
 import '../core/user_rights.dart';
+import '../models/company_bank_account.dart';
 import '../models/company_info.dart';
 import '../services/billing_service.dart';
 import '../services/company_info_service.dart';
@@ -340,6 +341,9 @@ class _BillingPageState extends State<BillingPage> {
   bool _generatingPdf = false;
   CompanyInfo? _companyInfo;
   bool _loadingCompanyInfo = false;
+  List<CompanyBankAccount> _companyBankAccounts = [];
+  bool _loadingCompanyBankAccounts = false;
+  int? _selectedCompanyBankAccountId;
   pw.Font? _pdfFontRegular;
   pw.Font? _pdfFontBold;
   pw.MemoryImage? _pdfLogoImage;
@@ -455,6 +459,7 @@ class _BillingPageState extends State<BillingPage> {
     _availableMonths = _buildAvailableMonths();
     _selectedMonth = _availableMonths.first;
     _loadCompanyInfo();
+    _loadCompanyBankAccounts();
   }
 
   @override
@@ -871,6 +876,42 @@ class _BillingPageState extends State<BillingPage> {
                 },
               ),
             );
+            final bankField = _buildToolbarField(
+              label: 'Compte bancaire',
+              width: isCompact ? constraints.maxWidth : 320.0,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey(_selectedCompanyBankAccountId),
+                initialValue: _selectedCompanyBankAccountId,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: _loadingCompanyBankAccounts
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Icon(Icons.account_balance_outlined),
+                ),
+                hint: const Text('Compte par défaut entreprise'),
+                items: _companyBankAccounts
+                    .map(
+                      (account) => DropdownMenuItem<int>(
+                        value: account.id,
+                        child: Text(account.dropdownLabel),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: _companyBankAccounts.isEmpty
+                    ? null
+                    : (value) {
+                        if (value == null) return;
+                        setState(() => _selectedCompanyBankAccountId = value);
+                      },
+              ),
+            );
 
             if (isWideDesktop) {
               return Row(
@@ -879,6 +920,8 @@ class _BillingPageState extends State<BillingPage> {
                   clientField,
                   const SizedBox(width: 16),
                   monthField,
+                  const SizedBox(width: 16),
+                  bankField,
                   const SizedBox(width: 16),
                   Expanded(child: _buildToolbarButtons(allowWrap: true)),
                 ],
@@ -892,7 +935,7 @@ class _BillingPageState extends State<BillingPage> {
                   spacing: 16,
                   runSpacing: 6,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [clientField, monthField],
+                  children: [clientField, monthField, bankField],
                 ),
                 const SizedBox(height: 12),
                 _buildToolbarButtons(
@@ -3308,6 +3351,7 @@ class _BillingPageState extends State<BillingPage> {
     final lines = _lineEditors.map((editor) => editor.currentLine).toList();
     try {
       await _ensurePdfAssets();
+      final companyInfo = await _loadCompanyInfoForPdf();
       final headers = ['Désignation', 'TVA', 'P.U. HT', 'Qté', 'Total HT'];
       final rows = lines
           .map(
@@ -3346,8 +3390,8 @@ class _BillingPageState extends State<BillingPage> {
       final doc = pw.Document(theme: theme);
       final accent = PdfColor.fromHex('#000091');
       final borderColor = PdfColor.fromHex('#E5E7EB');
-      final companyInfo = _resolvedCompanyInfo;
       final companyLines = _companyInfoLinesForPdf(companyInfo);
+      final hasBankDetails = companyInfo.hasBankDetails;
       final hasLogo = _pdfLogoImage != null;
       final logoWidget = hasLogo
           ? pw.Container(
@@ -3373,12 +3417,20 @@ class _BillingPageState extends State<BillingPage> {
                     style: pw.TextStyle(
                       fontWeight: pw.FontWeight.bold,
                       color: accent,
+                      fontSize: _pdfFontSize(12),
                     ),
                   ),
                   pw.SizedBox(height: 4),
-                  ...companyLines.map(
-                    (line) =>
-                        pw.Text(line, style: const pw.TextStyle(fontSize: 11)),
+                  ...companyLines.asMap().entries.map(
+                    (entry) => pw.Text(
+                      entry.value,
+                      style: pw.TextStyle(
+                        fontSize: _pdfFontSize(entry.key == 0 ? 11.6 : 11),
+                        fontWeight: entry.key == 0
+                            ? pw.FontWeight.bold
+                            : pw.FontWeight.normal,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -3398,18 +3450,28 @@ class _BillingPageState extends State<BillingPage> {
               style: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColor.fromHex('#BE185D'),
+                fontSize: _pdfFontSize(12),
               ),
             ),
             pw.SizedBox(height: 4),
             pw.Text(
               clientLabel,
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13),
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: _pdfFontSize(11.6),
+                lineSpacing: 1.05,
+              ),
             ),
             if (clientAddressLines.isNotEmpty) ...[
               pw.SizedBox(height: 2),
               ...clientAddressLines.map(
-                (line) =>
-                    pw.Text(line, style: const pw.TextStyle(fontSize: 11)),
+                (line) => pw.Text(
+                  line,
+                  style: pw.TextStyle(
+                    fontSize: _pdfFontSize(12),
+                    lineSpacing: 1.05,
+                  ),
+                ),
               ),
             ],
           ],
@@ -3430,19 +3492,19 @@ class _BillingPageState extends State<BillingPage> {
               'Facture $invoiceNumber',
               style: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
-                fontSize: 15,
+                fontSize: _pdfFontSize(11.6),
                 color: accent,
               ),
             ),
             pw.SizedBox(height: 6),
             pw.Text(
               'Date de facturation : $billedAtLabel',
-              style: const pw.TextStyle(fontSize: 9.5),
+              style: pw.TextStyle(fontSize: _pdfFontSize(9.5)),
             ),
             pw.SizedBox(height: 2),
             pw.Text(
               'Code client : $clientCode',
-              style: const pw.TextStyle(fontSize: 9.5),
+              style: pw.TextStyle(fontSize: _pdfFontSize(9.5)),
             ),
           ],
         ),
@@ -3484,10 +3546,8 @@ class _BillingPageState extends State<BillingPage> {
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.fromLTRB(32, 32, 32, 40),
-          footer: (context) => _buildPdfFooter(
-            context,
-            companyInfo: companyInfo,
-          ),
+          footer: (context) =>
+              _buildPdfFooter(context, companyInfo: companyInfo),
           build: (context) => [
             pw.SizedBox(height: 6),
             ...headerStack,
@@ -3502,9 +3562,10 @@ class _BillingPageState extends State<BillingPage> {
               headerStyle: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.white,
+                fontSize: _pdfFontSize(10.5),
               ),
               headerDecoration: pw.BoxDecoration(color: accent),
-              cellStyle: const pw.TextStyle(fontSize: 10.5),
+              cellStyle: pw.TextStyle(fontSize: _pdfFontSize(10.5)),
               cellAlignments: {
                 0: pw.Alignment.centerLeft,
                 1: pw.Alignment.center,
@@ -3514,27 +3575,39 @@ class _BillingPageState extends State<BillingPage> {
               },
             ),
             pw.SizedBox(height: 14),
-            pw.Align(
-              alignment: pw.Alignment.centerRight,
-              child: pw.Container(
-                width: 210,
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: borderColor, width: 0.5),
-                ),
-                child: pw.Column(
-                  children: [
-                    _buildPdfTotalRow(
-                      label: 'Total HT',
-                      value: _formatCurrency(invoiceTotalHt),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                if (hasBankDetails)
+                  pw.Expanded(
+                    child: _buildPdfBankTransferBlock(
+                      companyInfo,
+                      borderColor: borderColor,
                     ),
-                    _buildPdfTotalRow(
-                      label: 'Total TTC',
-                      value: _formatCurrency(invoiceTotalTtc),
-                      highlighted: true,
-                    ),
-                  ],
+                  )
+                else
+                  pw.Spacer(),
+                if (hasBankDetails) pw.SizedBox(width: 16),
+                pw.Container(
+                  width: 210,
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: borderColor, width: 0.5),
+                  ),
+                  child: pw.Column(
+                    children: [
+                      _buildPdfTotalRow(
+                        label: 'Total HT',
+                        value: _formatCurrency(invoiceTotalHt),
+                      ),
+                      _buildPdfTotalRow(
+                        label: 'Total TTC',
+                        value: _formatCurrency(invoiceTotalTtc),
+                        highlighted: true,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
@@ -3669,18 +3742,69 @@ class _BillingPageState extends State<BillingPage> {
     try {
       final info = await CompanyInfoService.fetch();
       if (!mounted) return;
+      final selectedBankAccountId = _resolveSelectedCompanyBankAccountId(
+        accounts: _companyBankAccounts,
+        currentSelectedId: _selectedCompanyBankAccountId,
+        companyInfo: info,
+      );
       setState(() {
         _companyInfo = info;
+        _selectedCompanyBankAccountId = selectedBankAccountId;
         _loadingCompanyInfo = false;
       });
     } catch (error, stack) {
       debugPrint('Failed to load company info: $error');
       debugPrint(stack.toString());
       if (!mounted) return;
+      final fallbackInfo = CompanyInfo.fallback();
+      final selectedBankAccountId = _resolveSelectedCompanyBankAccountId(
+        accounts: _companyBankAccounts,
+        currentSelectedId: _selectedCompanyBankAccountId,
+        companyInfo: fallbackInfo,
+      );
       setState(() {
-        _companyInfo = CompanyInfo.fallback();
+        _companyInfo = fallbackInfo;
+        _selectedCompanyBankAccountId = selectedBankAccountId;
         _loadingCompanyInfo = false;
       });
+    }
+  }
+
+  Future<void> _loadCompanyBankAccounts() async {
+    if (_loadingCompanyBankAccounts) return;
+    setState(() => _loadingCompanyBankAccounts = true);
+    try {
+      final accounts = await CompanyInfoService.fetchBankAccounts();
+      if (!mounted) return;
+      final selectedBankAccountId = _resolveSelectedCompanyBankAccountId(
+        accounts: accounts,
+        currentSelectedId: _selectedCompanyBankAccountId,
+        companyInfo: _companyInfo,
+      );
+      setState(() {
+        _companyBankAccounts = accounts;
+        _selectedCompanyBankAccountId = selectedBankAccountId;
+        _loadingCompanyBankAccounts = false;
+      });
+    } catch (error, stack) {
+      debugPrint('Failed to load company bank accounts: $error');
+      debugPrint(stack.toString());
+      if (!mounted) return;
+      setState(() => _loadingCompanyBankAccounts = false);
+    }
+  }
+
+  Future<CompanyInfo> _loadCompanyInfoForPdf() async {
+    try {
+      final info = await CompanyInfoService.fetch();
+      if (mounted) {
+        setState(() => _companyInfo = info);
+      } else {
+        _companyInfo = info;
+      }
+      return _applySelectedCompanyBankAccount(info);
+    } catch (_) {
+      return _applySelectedCompanyBankAccount(_resolvedCompanyInfo);
     }
   }
 
@@ -3851,6 +3975,8 @@ class _BillingPageState extends State<BillingPage> {
     if (value <= 0) return '0 %';
     return '${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 2)} %';
   }
+
+  double _pdfFontSize(double size) => size * 0.8;
 
   double _unitPriceForMission(Map<String, dynamic> mission) {
     final productPrice = _parseAmount(mission['produit_price']);
@@ -4227,6 +4353,54 @@ class _BillingPageState extends State<BillingPage> {
   CompanyInfo get _resolvedCompanyInfo =>
       _companyInfo ?? CompanyInfo.fallback();
 
+  CompanyBankAccount? get _selectedCompanyBankAccount {
+    final selectedId = _selectedCompanyBankAccountId;
+    if (selectedId == null) {
+      return null;
+    }
+    for (final account in _companyBankAccounts) {
+      if (account.id == selectedId) {
+        return account;
+      }
+    }
+    return null;
+  }
+
+  CompanyInfo _applySelectedCompanyBankAccount(CompanyInfo info) {
+    final selectedAccount = _selectedCompanyBankAccount;
+    if (selectedAccount == null) {
+      return info;
+    }
+    return selectedAccount.applyTo(info);
+  }
+
+  int? _resolveSelectedCompanyBankAccountId({
+    required List<CompanyBankAccount> accounts,
+    required int? currentSelectedId,
+    CompanyInfo? companyInfo,
+  }) {
+    if (accounts.isEmpty) {
+      return null;
+    }
+    if (currentSelectedId != null &&
+        accounts.any((account) => account.id == currentSelectedId)) {
+      return currentSelectedId;
+    }
+    if (companyInfo != null) {
+      for (final account in accounts) {
+        if (account.matchesCompanyInfo(companyInfo)) {
+          return account.id;
+        }
+      }
+    }
+    for (final account in accounts) {
+      if (account.isDefault) {
+        return account.id;
+      }
+    }
+    return accounts.first.id;
+  }
+
   List<String> _companyInfoLinesForPdf(CompanyInfo info) {
     final lines = <String>[];
     final name = info.name.trim();
@@ -4249,6 +4423,144 @@ class _BillingPageState extends State<BillingPage> {
     return lines;
   }
 
+  pw.Widget _buildPdfBankTransferBlock(
+    CompanyInfo info, {
+    required PdfColor borderColor,
+  }) {
+    final bankName = info.bankName.trim();
+    final bankCode = info.bankCode.trim();
+    final branchCode = info.bankBranchCode.trim();
+    final accountNumber = info.bankAccountNumber.trim();
+    final ribKey = info.bankRibKey.trim();
+    final address = _companyBankAddressForPdf(info);
+    final owner = info.bankAccountHolder.trim();
+    final iban = info.bankIban.trim();
+    final bic = info.bankBic.trim();
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        borderRadius: pw.BorderRadius.circular(6),
+        border: pw.Border.all(color: borderColor, width: 0.5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'RIB pour virement',
+            style: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              fontSize: _pdfFontSize(9.5),
+            ),
+          ),
+          pw.SizedBox(height: 3),
+          if (bankName.isNotEmpty)
+            pw.Text(
+              'Banque: $bankName',
+              style: pw.TextStyle(fontSize: _pdfFontSize(8.5)),
+            ),
+          pw.SizedBox(height: 4),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              _buildPdfBankInfoCell('Code banque', bankCode),
+              _buildPdfBankInfoCell('Code guichet', branchCode),
+              _buildPdfBankInfoCell('Numéro de compte', accountNumber, flex: 2),
+              _buildPdfBankInfoCell('Clé', ribKey),
+            ],
+          ),
+          pw.SizedBox(height: 4),
+          if (address.isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 1),
+              child: pw.Text(
+                'Adresse: $address',
+                style: pw.TextStyle(fontSize: _pdfFontSize(8.2)),
+              ),
+            ),
+          if (owner.isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 1),
+              child: pw.Text(
+                'Titulaire: $owner',
+                style: pw.TextStyle(fontSize: _pdfFontSize(8.2)),
+              ),
+            ),
+          if (iban.isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 1),
+              child: pw.Text(
+                'IBAN: $iban',
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: _pdfFontSize(8.4),
+                ),
+              ),
+            ),
+          if (bic.isNotEmpty)
+            pw.Text(
+              'BIC: $bic',
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: _pdfFontSize(8.4),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPdfBankInfoCell(String label, String value, {int flex = 1}) {
+    return pw.Expanded(
+      flex: flex,
+      child: pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+        decoration: pw.BoxDecoration(
+          border: pw.Border(
+            left: pw.BorderSide(color: PdfColor.fromHex('#9CA3AF'), width: 0.5),
+            right: pw.BorderSide(
+              color: PdfColor.fromHex('#9CA3AF'),
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: _pdfFontSize(7.4),
+              ),
+            ),
+            pw.SizedBox(height: 1),
+            pw.Text(value, style: pw.TextStyle(fontSize: _pdfFontSize(8.2))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _companyBankAddressForPdf(CompanyInfo info) {
+    final domiciliation = info.bankDomiciliation.trim();
+    if (domiciliation.isNotEmpty) {
+      for (final line in domiciliation.split(RegExp(r'\r?\n'))) {
+        final trimmed = line.trim();
+        if (trimmed.isNotEmpty) {
+          return trimmed;
+        }
+      }
+    }
+    final ownerAddress = info.bankOwnerAddress.trim();
+    final ownerCityLine = info.bankOwnerCityLine;
+    return [
+      ownerAddress,
+      ownerCityLine,
+    ].where((part) => part.isNotEmpty).join(', ');
+  }
+
   pw.Widget _buildPdfTotalRow({
     required String label,
     required String value,
@@ -4263,16 +4575,26 @@ class _BillingPageState extends State<BillingPage> {
             child: pw.Text(
               label,
               style: pw.TextStyle(
-                fontWeight: highlighted ? pw.FontWeight.bold : pw.FontWeight.normal,
-                color: highlighted ? PdfColor.fromHex('#111827') : PdfColors.black,
+                fontWeight: highlighted
+                    ? pw.FontWeight.bold
+                    : pw.FontWeight.normal,
+                color: highlighted
+                    ? PdfColor.fromHex('#111827')
+                    : PdfColors.black,
+                fontSize: _pdfFontSize(12),
               ),
             ),
           ),
           pw.Text(
             value,
             style: pw.TextStyle(
-              fontWeight: highlighted ? pw.FontWeight.bold : pw.FontWeight.normal,
-              color: highlighted ? PdfColor.fromHex('#000091') : PdfColors.black,
+              fontWeight: highlighted
+                  ? pw.FontWeight.bold
+                  : pw.FontWeight.normal,
+              color: highlighted
+                  ? PdfColor.fromHex('#000091')
+                  : PdfColors.black,
+              fontSize: _pdfFontSize(12),
             ),
           ),
         ],
@@ -4321,7 +4643,7 @@ class _BillingPageState extends State<BillingPage> {
                       companyName,
                       textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(
-                        fontSize: 8.6,
+                        fontSize: _pdfFontSize(8.6),
                         fontWeight: pw.FontWeight.bold,
                         color: PdfColor.fromHex('#111827'),
                       ),
@@ -4330,14 +4652,14 @@ class _BillingPageState extends State<BillingPage> {
                     pw.Text(
                       footerLine1,
                       textAlign: pw.TextAlign.center,
-                      style: const pw.TextStyle(fontSize: 7.9),
+                      style: pw.TextStyle(fontSize: _pdfFontSize(7.9)),
                     ),
                     if (footerLine2.isNotEmpty) ...[
                       pw.SizedBox(height: 1),
                       pw.Text(
                         footerLine2,
                         textAlign: pw.TextAlign.center,
-                        style: const pw.TextStyle(fontSize: 7.9),
+                        style: pw.TextStyle(fontSize: _pdfFontSize(7.9)),
                       ),
                     ],
                   ],
@@ -4349,7 +4671,7 @@ class _BillingPageState extends State<BillingPage> {
                   child: pw.Text(
                     'Page ${context.pageNumber} / ${context.pagesCount}',
                     style: pw.TextStyle(
-                      fontSize: 8,
+                      fontSize: _pdfFontSize(8),
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColor.fromHex('#374151'),
                     ),
