@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_underscores, prefer_final_fields
+// ignore_for_file: use_build_context_synchronously, unnecessary_underscores, prefer_final_fields
 
 import 'dart:async';
 import 'dart:math' as math;

@@ -1002,8 +1002,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Renseignez le formulaire ci-dessous pour créer une mission. '
-            'L’ancien contenu de la modale est désormais disponible en plein écran.',
+            'Les champs avec astérixe (*) sont obligatoires',
             style: TextStyle(color: Color(0xFF4B5563)),
           ),
           const SizedBox(height: 16),
@@ -1412,7 +1411,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       confirmText: 'Appliquer',
     );
 
-    if (picked == null) return;
+    if (!mounted || picked == null) return;
 
     setState(() {
       _dateStart = DateTime(
@@ -2047,32 +2046,26 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                                       ],
                                     ),
                                   );
-                                  if (confirm == true) {
-                                    final ok =
-                                        await MissionService.deleteMission(
-                                          rowId,
-                                        );
-                                    if (!mounted) return;
-                                    if (ok) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Mission supprimée'),
+                                  if (!mounted || confirm != true) return;
+                                  final ok = await MissionService.deleteMission(
+                                    rowId,
+                                  );
+                                  if (!mounted) return;
+                                  if (ok) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Mission supprimée'),
+                                      ),
+                                    );
+                                    _load();
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Échec de la suppression',
                                         ),
-                                      );
-                                      _load();
-                                    } else {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Échec de la suppression',
-                                          ),
-                                        ),
-                                      );
-                                    }
+                                      ),
+                                    );
                                   }
                                 },
                               ),
@@ -2866,14 +2859,13 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         firstDate: DateTime(now.year - 5),
                         lastDate: DateTime(now.year + 5),
                       );
-                      if (picked != null) {
-                        setState(() {
-                          _selectedMissionDate = picked;
-                          _dateCtrl.text = widget.dateDisplayFormat.format(
-                            picked,
-                          );
-                        });
-                      }
+                      if (!mounted || picked == null) return;
+                      setState(() {
+                        _selectedMissionDate = picked;
+                        _dateCtrl.text = widget.dateDisplayFormat.format(
+                          picked,
+                        );
+                      });
                     },
                     decoration: const InputDecoration(
                       labelText: 'Date de la mission * (JJ/MM/AAAA)',
@@ -2898,12 +2890,11 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                           child: child!,
                         ),
                       );
-                      if (picked != null) {
-                        setState(() {
-                          _selectedMissionTime = picked;
-                          _heureCtrl.text = widget.formatTimeOfDay(picked);
-                        });
-                      }
+                      if (!mounted || picked == null) return;
+                      setState(() {
+                        _selectedMissionTime = picked;
+                        _heureCtrl.text = widget.formatTimeOfDay(picked);
+                      });
                     },
                     decoration: const InputDecoration(
                       labelText: 'Heure de début (HH:MM)',
