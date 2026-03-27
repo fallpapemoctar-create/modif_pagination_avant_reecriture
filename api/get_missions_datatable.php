@@ -175,6 +175,7 @@ try {
             p.tva_tx AS produit_tva_tx,
             p.rowid AS id_produit_service,
             s.nom AS client_name,
+            s.code_client AS client_code,
             s.address AS client_address,
             s.zip AS client_zip,
             s.town AS client_town,

@@ -3320,11 +3320,25 @@ class _BillingPageState extends State<BillingPage> {
             ],
           )
           .toList();
+      final invoiceTotalHt = lines.fold<double>(
+        0,
+        (sum, line) => sum + line.totalHt,
+      );
+      final invoiceTotalTtc = lines.fold<double>(
+        0,
+        (sum, line) => sum + (line.totalHt * (1 + (line.tvaRate / 100))),
+      );
       final clientLabel = _currentClientName.isEmpty
           ? 'Client non renseigné'
           : _currentClientName;
       final clientAddressLines = _clientAddressLinesForPdf();
       final now = DateTime.now();
+      final invoiceNumber = await BillingService.reserveNextInvoiceNumber(
+        year: now.year,
+        month: now.month,
+      );
+      final billedAtLabel = DateFormat('dd/MM/yyyy').format(now);
+      final clientCode = _clientCodeForPdf();
       final theme = pw.ThemeData.withFont(
         base: _pdfFontRegular!,
         bold: _pdfFontBold!,
@@ -3398,10 +3412,37 @@ class _BillingPageState extends State<BillingPage> {
                     pw.Text(line, style: const pw.TextStyle(fontSize: 11)),
               ),
             ],
-            pw.SizedBox(height: clientAddressLines.isNotEmpty ? 6 : 2),
+          ],
+        ),
+      );
+      final invoiceMetaCard = pw.Container(
+        constraints: const pw.BoxConstraints(maxWidth: 220),
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+          color: PdfColor.fromHex('#EEF2FF'),
+          borderRadius: pw.BorderRadius.circular(10),
+          border: pw.Border.all(color: PdfColor.fromHex('#C7D2FE'), width: 0.5),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
             pw.Text(
-              'Période : ${_monthLabel(_selectedMonth)}',
-              style: const pw.TextStyle(fontSize: 11),
+              'Facture $invoiceNumber',
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 15,
+                color: accent,
+              ),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Text(
+              'Date de facturation : $billedAtLabel',
+              style: const pw.TextStyle(fontSize: 9.5),
+            ),
+            pw.SizedBox(height: 2),
+            pw.Text(
+              'Code client : $clientCode',
+              style: const pw.TextStyle(fontSize: 9.5),
             ),
           ],
         ),
@@ -3415,11 +3456,24 @@ class _BillingPageState extends State<BillingPage> {
       }
       headerColumns.add(pw.Expanded(flex: 3, child: clientCard));
       final headerStack = <pw.Widget>[];
-      if (logoWidget != null) {
-        headerStack.add(
-          pw.Align(alignment: pw.Alignment.centerLeft, child: logoWidget),
-        );
-      }
+      headerStack.add(
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: logoWidget == null
+                  ? pw.SizedBox()
+                  : pw.Align(
+                      alignment: pw.Alignment.centerLeft,
+                      child: logoWidget,
+                    ),
+            ),
+            pw.SizedBox(width: 16),
+            invoiceMetaCard,
+          ],
+        ),
+      );
+      headerStack.add(pw.SizedBox(height: 12));
       headerStack.add(
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -3430,6 +3484,10 @@ class _BillingPageState extends State<BillingPage> {
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.fromLTRB(32, 32, 32, 40),
+          footer: (context) => _buildPdfFooter(
+            context,
+            companyInfo: companyInfo,
+          ),
           build: (context) => [
             pw.SizedBox(height: 6),
             ...headerStack,
@@ -3454,6 +3512,29 @@ class _BillingPageState extends State<BillingPage> {
                 3: pw.Alignment.centerRight,
                 4: pw.Alignment.centerRight,
               },
+            ),
+            pw.SizedBox(height: 14),
+            pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Container(
+                width: 210,
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: borderColor, width: 0.5),
+                ),
+                child: pw.Column(
+                  children: [
+                    _buildPdfTotalRow(
+                      label: 'Total HT',
+                      value: _formatCurrency(invoiceTotalHt),
+                    ),
+                    _buildPdfTotalRow(
+                      label: 'Total TTC',
+                      value: _formatCurrency(invoiceTotalTtc),
+                      highlighted: true,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -4083,6 +4164,22 @@ class _BillingPageState extends State<BillingPage> {
     return lines;
   }
 
+  String _clientCodeForPdf() {
+    final mission = _missionWithClientDetails();
+    if (mission == null) return '-';
+    final code = _stringValueFromKeys(mission, const [
+      'client_code',
+      'code_client',
+      'customer_code',
+    ]);
+    if (code.isNotEmpty) return code;
+    final clientId = _stringValueFromKeys(mission, const [
+      'client_id',
+      'fk_soc',
+    ]);
+    return clientId.isNotEmpty ? clientId : '-';
+  }
+
   Map<String, dynamic>? _missionWithClientDetails() {
     for (final mission in _missions) {
       if (_hasClientAddressData(mission)) return mission;
@@ -4150,6 +4247,128 @@ class _BillingPageState extends State<BillingPage> {
     final website = info.website.trim();
     if (website.isNotEmpty) lines.add('Site : $website');
     return lines;
+  }
+
+  pw.Widget _buildPdfTotalRow({
+    required String label,
+    required String value,
+    bool highlighted = false,
+  }) {
+    return pw.Container(
+      color: highlighted ? PdfColor.fromHex('#E5E7EB') : PdfColors.white,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: pw.Row(
+        children: [
+          pw.Expanded(
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontWeight: highlighted ? pw.FontWeight.bold : pw.FontWeight.normal,
+                color: highlighted ? PdfColor.fromHex('#111827') : PdfColors.black,
+              ),
+            ),
+          ),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontWeight: highlighted ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: highlighted ? PdfColor.fromHex('#000091') : PdfColors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPdfFooter(
+    pw.Context context, {
+    required CompanyInfo companyInfo,
+  }) {
+    final siret = _formattedSiretForPdf(companyInfo.siret);
+    final companyName = companyInfo.name.trim().isEmpty
+        ? 'Planet Traduction'
+        : companyInfo.name.trim();
+    final footerLine1 =
+        'Association loi 1901 ou assimilé - SIRET : $siret / NAF-APE : 74.30Z';
+    final footerContacts = <String>[];
+    final website = companyInfo.website.trim();
+    if (website.isNotEmpty) {
+      footerContacts.add(website);
+    }
+    final email = companyInfo.email.trim();
+    if (email.isNotEmpty) {
+      footerContacts.add(email);
+    }
+    final footerLine2 = footerContacts.join(' | ');
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.only(top: 7),
+      child: pw.Column(
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Container(height: 0.5, color: PdfColor.fromHex('#D1D5DB')),
+          pw.SizedBox(height: 5),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Expanded(child: pw.SizedBox()),
+              pw.Expanded(
+                flex: 4,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Text(
+                      companyName,
+                      textAlign: pw.TextAlign.center,
+                      style: pw.TextStyle(
+                        fontSize: 8.6,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColor.fromHex('#111827'),
+                      ),
+                    ),
+                    pw.SizedBox(height: 1.5),
+                    pw.Text(
+                      footerLine1,
+                      textAlign: pw.TextAlign.center,
+                      style: const pw.TextStyle(fontSize: 7.9),
+                    ),
+                    if (footerLine2.isNotEmpty) ...[
+                      pw.SizedBox(height: 1),
+                      pw.Text(
+                        footerLine2,
+                        textAlign: pw.TextAlign.center,
+                        style: const pw.TextStyle(fontSize: 7.9),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              pw.Expanded(
+                child: pw.Align(
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Text(
+                    'Page ${context.pageNumber} / ${context.pagesCount}',
+                    style: pw.TextStyle(
+                      fontSize: 8,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColor.fromHex('#374151'),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formattedSiretForPdf(String value) {
+    final digits = value.replaceAll(RegExp(r'\s+'), '');
+    if (digits.length != 14) {
+      return value.trim().isEmpty ? '912 824 158 00014' : value.trim();
+    }
+    return '${digits.substring(0, 3)} ${digits.substring(3, 6)} ${digits.substring(6, 9)} ${digits.substring(9, 14)}';
   }
 
   String? _missionRef(Map<String, dynamic> mission) {
