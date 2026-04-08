@@ -194,6 +194,7 @@ try {
 
     $hasLabelColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'label');
     $hasMissionTypesColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'mission_types');
+    $hasDateCreationColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'date_creation');
     $hasDateMissionColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'datemission');
     $hasHeureMissionColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'heuredebutmission');
     $hasDureeMissionColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'dureemission');
@@ -236,6 +237,9 @@ try {
         } catch (Exception $e) {
             // ignore
         }
+    }
+    if (!$fin && $debut) {
+        $fin = $debut;
     }
 
     // Compute montant if possible (only when column exists)
@@ -290,6 +294,10 @@ try {
         $columns['label'] = ':label';
         $params[':label'] = $label;
     }
+    if ($hasDateCreationColumn) {
+        $columns['date_creation'] = ':date_creation';
+        $params[':date_creation'] = date('Y-m-d H:i:s');
+    }
     if ($hasDateMissionColumn) {
         $columns['datemission'] = ':datemission';
         $params[':datemission'] = $datemission;
@@ -324,8 +332,13 @@ try {
     $sql = "INSERT INTO llx_missionsplanet_mission (" . implode(', ', array_keys($columns)) . ") VALUES (" . implode(', ', array_values($columns)) . ")";
     $stmt = $pdo->prepare($sql);
     $ok = $stmt->execute($params);
+    $insertedId = $ok ? (int)$pdo->lastInsertId() : 0;
 
-    echo json_encode(["success" => $ok]);
+    echo json_encode([
+        "success" => $ok,
+        "id" => $insertedId > 0 ? $insertedId : null,
+        "ref" => $ref,
+    ]);
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(["success" => false, "message" => $e->getMessage()]);

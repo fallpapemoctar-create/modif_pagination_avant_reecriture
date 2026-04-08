@@ -122,12 +122,26 @@ class MissionService {
     }
   }
 
-  static Future<Map<String, dynamic>> getMissionsDatatable({int page = 1, int pageSize = 50, String? q}) async {
+  static Future<Map<String, dynamic>> getMissionsDatatable({
+    int page = 1,
+    int pageSize = 50,
+    String? q,
+    String? dateStart,
+    String? dateEnd,
+    String? billedStatus,
+    String? missionStatus,
+    String? missionType,
+  }) async {
     try {
       final uri = Uri.parse("${baseUrl}get_missions_datatable.php").replace(queryParameters: {
         'page': page.toString(),
         'pageSize': pageSize.toString(),
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (dateStart != null && dateStart.trim().isNotEmpty) 'dateStart': dateStart.trim(),
+        if (dateEnd != null && dateEnd.trim().isNotEmpty) 'dateEnd': dateEnd.trim(),
+        if (billedStatus != null && billedStatus.trim().isNotEmpty) 'billedStatus': billedStatus.trim(),
+        if (missionStatus != null && missionStatus.trim().isNotEmpty) 'missionStatus': missionStatus.trim(),
+        if (missionType != null && missionType.trim().isNotEmpty) 'missionType': missionType.trim(),
       });
       final response = await http.get(uri);
       final decoded = jsonDecode(response.body);
@@ -151,11 +165,23 @@ class MissionService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getMissionsDatatableAll({String? q}) async {
+  static Future<List<Map<String, dynamic>>> getMissionsDatatableAll({
+    String? q,
+    String? dateStart,
+    String? dateEnd,
+    String? billedStatus,
+    String? missionStatus,
+    String? missionType,
+  }) async {
     try {
       final uri = Uri.parse("${baseUrl}get_missions_datatable.php").replace(queryParameters: {
         'exportAll': '1',
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (dateStart != null && dateStart.trim().isNotEmpty) 'dateStart': dateStart.trim(),
+        if (dateEnd != null && dateEnd.trim().isNotEmpty) 'dateEnd': dateEnd.trim(),
+        if (billedStatus != null && billedStatus.trim().isNotEmpty) 'billedStatus': billedStatus.trim(),
+        if (missionStatus != null && missionStatus.trim().isNotEmpty) 'missionStatus': missionStatus.trim(),
+        if (missionType != null && missionType.trim().isNotEmpty) 'missionType': missionType.trim(),
       });
       final response = await http.get(uri);
       final decoded = jsonDecode(response.body);

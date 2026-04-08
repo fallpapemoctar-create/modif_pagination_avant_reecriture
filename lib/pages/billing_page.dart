@@ -304,6 +304,8 @@ class BillingPage extends StatefulWidget {
 }
 
 class _BillingPageState extends State<BillingPage> {
+  static const Set<String> _billableMissionStatuses = <String>{'0', '1'};
+
   BillingSection _activeSection = BillingSection.creation;
   bool _sidebarCollapsed = false;
   bool _routeArgsLoaded = false;
@@ -367,6 +369,11 @@ class _BillingPageState extends State<BillingPage> {
   bool _loadingInvoiceLinesPanel = false;
   bool _savingInvoiceLinesPanel = false;
   final Set<String> _updatingInvoiceStatus = <String>{};
+
+  bool _isMissionEligibleForBilling(Map<String, dynamic> mission) {
+    final status = (mission['mission_status'] ?? '').toString().trim();
+    return _billableMissionStatuses.contains(status);
+  }
 
   static const List<String> _invoiceStatusLabels = [
     'Brouillon',
@@ -472,18 +479,34 @@ class _BillingPageState extends State<BillingPage> {
     _routeArgsLoaded = true;
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args is BillingPageArguments && args.missions.isNotEmpty) {
+      final eligibleMissions = args.missions
+          .where(_isMissionEligibleForBilling)
+          .map((mission) => Map<String, dynamic>.from(mission))
+          .toList();
       setState(() {
-        _allClientMissions = args.missions
-            .map((mission) => Map<String, dynamic>.from(mission))
-            .toList();
-        final inferredClient = (_allClientMissions.first['client_name'] ?? '')
-            .toString()
-            .trim();
-        if (inferredClient.isNotEmpty) {
-          _clientInput = inferredClient;
+        _allClientMissions = eligibleMissions;
+        if (_allClientMissions.isNotEmpty) {
+          final inferredClient = (_allClientMissions.first['client_name'] ?? '')
+              .toString()
+              .trim();
+          if (inferredClient.isNotEmpty) {
+            _clientInput = inferredClient;
+          }
         }
         _applyMonthFilter();
       });
+      if (eligibleMissions.isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Aucune mission facturable transmise. Seules les missions Brouillon et Validées sont acceptées.',
+              ),
+            ),
+          );
+        });
+      }
     }
   }
 
@@ -3409,6 +3432,7 @@ class _BillingPageState extends State<BillingPage> {
       if (!mounted) return;
       final filtered = missions
           .where((mission) => _missionMatchesClient(mission, normalized))
+          .where(_isMissionEligibleForBilling)
           .map((mission) => Map<String, dynamic>.from(mission))
           .toList();
       setState(() {
@@ -3421,7 +3445,7 @@ class _BillingPageState extends State<BillingPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Aucune mission trouvée pour ce client sur les 12 derniers mois.',
+              'Aucune mission facturable trouvée pour ce client sur les 12 derniers mois. Seules les missions Brouillon et Validées sont prises en compte.',
             ),
           ),
         );
@@ -3445,6 +3469,17 @@ class _BillingPageState extends State<BillingPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Chargez des missions avant de générer un PDF.'),
+        ),
+      );
+      return;
+    }
+    final billingMissions = _buildBillingMissionsPayload(_lineEditors);
+    if (billingMissions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Impossible d\'enregistrer la facture: aucune référence mission exploitable n\'a été trouvée.',
+          ),
         ),
       );
       return;
@@ -3738,10 +3773,60 @@ class _BillingPageState extends State<BillingPage> {
               '_',
             );
       final filename = 'Facture_${sanitizedClient}_$timestamp.pdf';
+      await BillingService.logClientBilling(
+        clientName: _currentClientName,
+        invoiceNumber: invoiceNumber,
+        statusCode: 'draft',
+        statusLabel: 'Brouillon',
+        billedAt: now,
+        amountTotal: invoiceTotalHt,
+        missions: billingMissions,
+        invoiceLines: lines,
+        pdfBytes: bytes,
+        pdfFilename: filename,
+        userId: AuthManager.userId,
+        userName: AuthManager.userFullName,
+        periodMonth: _selectedMonth,
+        draftKey: _draftKey,
+      );
+      if (mounted) {
+        setState(() {
+          _draftKey = null;
+        });
+      }
+      await _loadInvoices(reset: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Facture $invoiceNumber enregistrée en base.'),
+        ),
+      );
       if (canSavePdfToDownloads) {
-        await savePdfToDownloads(bytes, filename);
+        try {
+          await savePdfToDownloads(bytes, filename);
+        } catch (_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Facture $invoiceNumber enregistrée, mais le téléchargement local du PDF a échoué.',
+              ),
+            ),
+          );
+        }
       } else {
-        await Printing.layoutPdf(name: filename, onLayout: (_) async => bytes);
+        try {
+          await Printing.layoutPdf(name: filename, onLayout: (_) async => bytes);
+        } catch (_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Facture $invoiceNumber enregistrée, mais l\'ouverture du PDF a échoué.',
+              ),
+            ),
+          );
+        }
       }
     } catch (e, stack) {
       debugPrint('PDF generation failed: $e');
@@ -3775,6 +3860,7 @@ class _BillingPageState extends State<BillingPage> {
 
   void _applyMonthFilter() {
     final filtered = _allClientMissions.where((mission) {
+      if (!_isMissionEligibleForBilling(mission)) return false;
       final date = _missionDate(mission);
       if (date == null) return false;
       return date.year == _selectedMonth.year &&
@@ -4108,6 +4194,32 @@ class _BillingPageState extends State<BillingPage> {
   String get _currentClientName => _clientInput.trim();
   double get _currentTotalHt =>
       _lineEditors.fold(0, (sum, editor) => sum + editor.currentLine.totalHt);
+
+  List<Map<String, dynamic>> _buildBillingMissionsPayload(
+    List<_EditableInvoiceLine> editors,
+  ) {
+    final totalsByMission = <String, double>{};
+    for (final editor in editors) {
+      final ref = (editor.missionRef ?? editor.currentLine.missionRef ?? '')
+          .trim();
+      if (ref.isEmpty) continue;
+      totalsByMission.update(
+        ref,
+        (current) => current + editor.currentLine.totalHt,
+        ifAbsent: () => editor.currentLine.totalHt,
+      );
+    }
+
+    return totalsByMission.entries
+        .map(
+          (entry) => <String, dynamic>{
+            'reference': entry.key,
+            'mission_ref': entry.key,
+            'amount_ht': double.parse(entry.value.toStringAsFixed(2)),
+          },
+        )
+        .toList(growable: false);
+  }
 
   List<DateTime> _buildAvailableMonths({int monthsBack = 12}) {
     final now = DateTime.now();

@@ -63,13 +63,21 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     'Traduction',
     'Interprétariat',
   ];
+  static const List<String> _missionTypeFilterOptions = <String>[
+    'Tous',
+    'Tribunal judiciaire',
+    'Traduction',
+    'Interprétariat',
+  ];
 
   final DateFormat _dateDisplayFormat = DateFormat('dd/MM/yyyy');
   final DateFormat _dateApiFormat = DateFormat('yyyy-MM-dd');
+  final DateFormat _dateTimeDisplayFormat = DateFormat('dd/MM/yyyy HH:mm');
   final DateFormat _timeDisplayFormat = DateFormat('HH:mm');
 
-  // Workflow (mission_status) filter
+  // Mission status filter
   String _workflowFilter = 'Tous';
+  String _missionTypeFilter = 'Tous';
   final List<String> _workflowOptions = const ['Tous', '0', '1', '9'];
   List<String> _languageOptions = <String>[];
   List<_AutocompleteEntry<String>> _languageEntries =
@@ -84,6 +92,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     'ref': true,
     'refmission': false,
     'langue': true,
+    'typeMission': true,
     'datemission': true,
     'heuredebut': true,
     'duree': true,
@@ -116,11 +125,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   final Map<String, String> _workflowLabels = const {
     'Tous': 'Tous',
     '0': 'Brouillon',
-    '1': 'Validée',
-    '2': 'Envoyée',
-    '3': 'Renvoyée',
-    '4': 'Planifiée',
-    '9': 'Payée',
+    '1': 'Validé',
+    '9': 'Annulé',
   };
   bool _routeArgsHandled = false;
 
@@ -149,8 +155,18 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   }
 
   String _labelForStatus(String code) {
-    if (code == 'Tous') return 'Tous les workflows';
+    if (code == 'Tous') return 'Tous les statuts mission';
     return _workflowLabels[code] ?? 'Statut $code';
+  }
+
+  String _labelForMissionTypeFilter(String option) {
+    if (option == 'Tous') return 'Tous les types';
+    return option;
+  }
+
+  bool _isMissionEligibleForBilling(Map<String, dynamic> mission) {
+    final status = (mission['mission_status'] ?? '').toString().trim();
+    return status == '0' || status == '1';
   }
 
   List<String> _decodeMissionTypes(dynamic raw) {
@@ -168,6 +184,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
         .map((part) => part.trim())
         .where((part) => part.isNotEmpty)
         .toList();
+  }
+
+  String _missionTypesLabel(dynamic raw) {
+    final values = _decodeMissionTypes(raw);
+    if (values.isEmpty) return '—';
+    return values.join(', ');
   }
 
   String _friendlyMissionError(String? message, {required bool isCreation}) {
@@ -275,6 +297,107 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
 
   String _fmtDate(DateTime date) => _dateDisplayFormat.format(date);
 
+  String _formatDisplayDateValue(dynamic raw) {
+    final text = (raw ?? '').toString().trim();
+    if (text.isEmpty) return '—';
+    final parsed = DateTime.tryParse(text) ?? _parseMissionDate(text);
+    if (parsed == null) return text;
+    return _dateDisplayFormat.format(parsed);
+  }
+
+  String _formatDisplayDateTimeValue(dynamic raw) {
+    final text = (raw ?? '').toString().trim();
+    if (text.isEmpty) return '—';
+    final parsed = DateTime.tryParse(text) ?? _parseMissionDate(text);
+    if (parsed == null) return text;
+    final hasTime = text.contains(':') ||
+        parsed.hour != 0 ||
+        parsed.minute != 0 ||
+        parsed.second != 0;
+    return hasTime
+        ? _dateTimeDisplayFormat.format(parsed)
+        : _dateDisplayFormat.format(parsed);
+  }
+
+  ({DateTime? start, DateTime? end}) _resolvedDateRange() {
+    DateTime? start = _dateStart;
+    DateTime? end = _dateEnd;
+    if (start == null && end == null) {
+      final today = DateTime.now();
+      switch (_dateFilter) {
+        case 'Aujourd\'hui':
+          start = DateTime(today.year, today.month, today.day);
+          end = start;
+          break;
+        case '7 derniers jours':
+          end = DateTime(today.year, today.month, today.day);
+          start = end.subtract(const Duration(days: 6));
+          break;
+        case '30 derniers jours':
+          end = DateTime(today.year, today.month, today.day);
+          start = end.subtract(const Duration(days: 29));
+          break;
+        case 'Ce mois':
+          start = DateTime(today.year, today.month, 1);
+          end = DateTime(today.year, today.month + 1, 0);
+          break;
+      }
+    }
+    return (start: start, end: end);
+  }
+
+  void _applyPresetDateFilter(String option) {
+    setState(() {
+      _dateFilter = option;
+      _dateStart = null;
+      _dateEnd = null;
+    });
+    _load(resetPage: true);
+  }
+
+  void _applyBillingStatusFilter(String? value) {
+    setState(() {
+      _statusFilter = value ?? 'Tous';
+    });
+    _load(resetPage: true);
+  }
+
+  void _applyMissionStatusFilter(String? value) {
+    setState(() {
+      _workflowFilter = value ?? 'Tous';
+    });
+    _load(resetPage: true);
+  }
+
+  void _applyMissionTypeFilter(String? value) {
+    setState(() {
+      _missionTypeFilter = value ?? 'Tous';
+    });
+    _load(resetPage: true);
+  }
+
+  void _clearDateFilter() {
+    setState(() {
+      _dateFilter = 'Tous';
+      _dateStart = null;
+      _dateEnd = null;
+    });
+    _load(resetPage: true);
+  }
+
+  void _resetAllFilters() {
+    setState(() {
+      _statusFilter = 'Tous';
+      _workflowFilter = 'Tous';
+      _missionTypeFilter = 'Tous';
+      _dateFilter = 'Tous';
+      _dateStart = null;
+      _dateEnd = null;
+      _searchCtrl.clear();
+    });
+    _load(resetPage: true);
+  }
+
   Future<void> _loadLanguageOptions() async {
     try {
       final names = await LanguageService.getLanguageDisplayNames(limit: 500);
@@ -297,11 +420,19 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       if (resetPage) _page = 1;
     });
     final query = _searchCtrl.text.trim();
+    final range = _resolvedDateRange();
     try {
       final response = await MissionService.getMissionsDatatable(
         page: _page,
         pageSize: _pageSize,
         q: query.isEmpty ? null : query,
+        dateStart: range.start != null
+            ? _dateApiFormat.format(range.start!)
+            : null,
+        dateEnd: range.end != null ? _dateApiFormat.format(range.end!) : null,
+        billedStatus: _statusFilter == 'Tous' ? null : _statusFilter,
+        missionStatus: _workflowFilter == 'Tous' ? null : _workflowFilter,
+        missionType: _missionTypeFilter == 'Tous' ? null : _missionTypeFilter,
       );
       if (!mounted) return;
       final missions = (response['missions'] as List<dynamic>? ?? const [])
@@ -326,19 +457,6 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
 
   List<Map<String, dynamic>> _filtered() {
     Iterable<Map<String, dynamic>> data = _missions;
-    if (_statusFilter != 'Tous') {
-      final needle = _statusFilter.toLowerCase();
-      data = data.where(
-        (mission) =>
-            (mission['billed_status'] ?? '').toString().toLowerCase() == needle,
-      );
-    }
-    if (_workflowFilter != 'Tous') {
-      data = data.where(
-        (mission) =>
-            (mission['mission_status'] ?? '').toString() == _workflowFilter,
-      );
-    }
     final search = _searchCtrl.text.trim().toLowerCase();
     if (search.isNotEmpty) {
       data = data.where((mission) {
@@ -347,47 +465,13 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
           mission['client_name'],
           mission['interpreter_name'],
           mission['produit_ref'],
+          _missionTypesLabel(mission['mission_types']),
           mission['label'],
         ];
         return fields.any(
           (value) =>
               value != null && value.toString().toLowerCase().contains(search),
         );
-      });
-    }
-
-    DateTime? start = _dateStart;
-    DateTime? end = _dateEnd?.add(const Duration(days: 1));
-    final today = DateTime.now();
-    if (start == null && end == null) {
-      switch (_dateFilter) {
-        case 'Aujourd\'hui':
-          start = DateTime(today.year, today.month, today.day);
-          end = start.add(const Duration(days: 1));
-          break;
-        case '7 derniers jours':
-          end = DateTime(today.year, today.month, today.day + 1);
-          start = end.subtract(const Duration(days: 7));
-          break;
-        case '30 derniers jours':
-          end = DateTime(today.year, today.month, today.day + 1);
-          start = end.subtract(const Duration(days: 30));
-          break;
-        case 'Ce mois':
-          start = DateTime(today.year, today.month, 1);
-          end = DateTime(today.year, today.month + 1, 1);
-          break;
-      }
-    }
-    if (start != null || end != null) {
-      data = data.where((mission) {
-        final raw = (mission['datemission_iso'] ?? mission['datemission'] ?? '')
-            .toString();
-        final parsed = _parseMissionDate(raw);
-        if (parsed == null) return false;
-        if (start != null && parsed.isBefore(start)) return false;
-        if (end != null && !parsed.isBefore(end)) return false;
-        return true;
       });
     }
     return data.toList(growable: false);
@@ -399,20 +483,34 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       return rows
           .where((mission) {
             final id = int.tryParse((mission['rowid'] ?? '0').toString()) ?? 0;
-            return !_deselectedRowIds.contains(id);
+            return !_deselectedRowIds.contains(id) &&
+                _isMissionEligibleForBilling(mission);
           })
           .toList(growable: false);
     }
     return rows
         .where((mission) {
           final id = int.tryParse((mission['rowid'] ?? '0').toString()) ?? 0;
-          return _selectedRowIds.contains(id);
+          return _selectedRowIds.contains(id) &&
+              _isMissionEligibleForBilling(mission);
         })
         .toList(growable: false);
   }
 
   Future<void> _exportFilteredCsv() async {
-    final rows = _filtered();
+    final query = _searchCtrl.text.trim();
+    final range = _resolvedDateRange();
+    final rows = await MissionService.getMissionsDatatableAll(
+      q: query.isEmpty ? null : query,
+      dateStart: range.start != null
+          ? _dateApiFormat.format(range.start!)
+          : null,
+      dateEnd: range.end != null ? _dateApiFormat.format(range.end!) : null,
+      billedStatus: _statusFilter == 'Tous' ? null : _statusFilter,
+      missionStatus: _workflowFilter == 'Tous' ? null : _workflowFilter,
+      missionType: _missionTypeFilter == 'Tous' ? null : _missionTypeFilter,
+    );
+    if (!mounted) return;
     if (rows.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aucune mission à exporter.')),
@@ -424,10 +522,11 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       'Client',
       'Interprète',
       'Langue',
+      'Type de mission',
       'Date',
       'Heure',
       'Durée (min)',
-      'Workflow',
+      'Statut mission',
     ];
     final buffer = StringBuffer()..writeln(headers.join(';'));
     for (final mission in rows) {
@@ -437,7 +536,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
               mission['client_name'] ?? '',
               mission['interpreter_name'] ?? '',
               mission['produit_ref'] ?? '',
-              mission['datemission'] ?? mission['datemission_iso'] ?? '',
+              _missionTypesLabel(mission['mission_types']),
+              _formatDisplayDateValue(
+                mission['datemission_iso'] ?? mission['datemission'],
+              ),
               mission['heuredebutmission'] ?? '',
               mission['dureemission'] ?? '',
               _labelForStatus((mission['mission_status'] ?? '').toString()),
@@ -580,8 +682,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     buildSwitch('refmission', 'Id. mission'),
                     buildSwitch('telephone', 'Tel. Demandeur'),
                     buildSwitch('mobile', 'Mobile Demandeur'),
+                    buildSwitch('typeMission', 'Type de mission'),
                     buildSwitch('facture', 'Facture interprète'),
-                    buildSwitch('statut', 'Statut (workflow)'),
+                    buildSwitch('statut', 'Statut mission'),
                     buildSwitch('createur', 'Créé par'),
                     buildSwitch('datecrea', 'Date création'),
                     buildSwitch('dateModif', 'Date modification'),
@@ -629,7 +732,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Veuillez sélectionner au moins une mission visible sur cette page.',
+            'Veuillez sélectionner au moins une mission en Brouillon ou Validée. Les missions annulées sont exclues de la facturation.',
           ),
         ),
       );
@@ -1189,7 +1292,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
         : _dateFilter;
     final String query = _searchCtrl.text.trim();
     final buffer = StringBuffer(
-      'Chargées: $loaded, Après filtres: $filtered • Statut: $_statusFilter • Workflow: $_workflowFilter • Date: $dateLabel',
+      'Chargées: $loaded, Après filtres: $filtered • Statut facture: $_statusFilter • Statut mission: ${_labelForStatus(_workflowFilter)} • Type: ${_labelForMissionTypeFilter(_missionTypeFilter)} • Date: $dateLabel',
     );
     if (query.isNotEmpty) {
       buffer.write(' • Recherche: $query');
@@ -1212,7 +1315,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Statuts',
+            'Filtres',
             style: TextStyle(
               fontWeight: FontWeight.w700,
               color: Color(0xFF111827),
@@ -1227,7 +1330,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   value: _statusFilter,
                   options: _statusOptions,
                   displayLabel: (option) => _labelForBillingFilter(option),
-                  onChanged: (v) => setState(() => _statusFilter = v ?? 'Tous'),
+                  onChanged: _applyBillingStatusFilter,
                 ),
                 const SizedBox(height: 12),
                 _buildDropdownFilter(
@@ -1235,8 +1338,15 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   value: _workflowFilter,
                   options: _workflowOptions,
                   displayLabel: (option) => _labelForStatus(option),
-                  onChanged: (v) =>
-                      setState(() => _workflowFilter = v ?? 'Tous'),
+                  onChanged: _applyMissionStatusFilter,
+                ),
+                const SizedBox(height: 12),
+                _buildDropdownFilter(
+                  label: 'Type de mission',
+                  value: _missionTypeFilter,
+                  options: _missionTypeFilterOptions,
+                  displayLabel: (option) => _labelForMissionTypeFilter(option),
+                  onChanged: _applyMissionTypeFilter,
                 ),
               ],
             )
@@ -1249,8 +1359,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     value: _statusFilter,
                     options: _statusOptions,
                     displayLabel: (option) => _labelForBillingFilter(option),
-                    onChanged: (v) =>
-                        setState(() => _statusFilter = v ?? 'Tous'),
+                    onChanged: _applyBillingStatusFilter,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1260,8 +1369,17 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     value: _workflowFilter,
                     options: _workflowOptions,
                     displayLabel: (option) => _labelForStatus(option),
-                    onChanged: (v) =>
-                        setState(() => _workflowFilter = v ?? 'Tous'),
+                    onChanged: _applyMissionStatusFilter,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDropdownFilter(
+                    label: 'Type de mission',
+                    value: _missionTypeFilter,
+                    options: _missionTypeFilterOptions,
+                    displayLabel: (option) => _labelForMissionTypeFilter(option),
+                    onChanged: _applyMissionTypeFilter,
                   ),
                 ),
               ],
@@ -1361,16 +1479,17 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   }
 
   Widget _buildDateControls({bool compact = false}) {
+    final bool hasCustomRange = _dateStart != null || _dateEnd != null;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
         ..._dateFilterOptions.map((opt) {
-          final bool selected = _dateFilter == opt;
+          final bool selected = !hasCustomRange && _dateFilter == opt;
           return ChoiceChip(
             label: Text(opt),
             selected: selected,
-            onSelected: (v) => setState(() => _dateFilter = opt),
+            onSelected: (_) => _applyPresetDateFilter(opt),
             selectedColor: _primaryBlue,
             labelStyle: TextStyle(
               color: selected ? Colors.white : _primaryBlue,
@@ -1422,6 +1541,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       _dateEnd = DateTime(picked.end.year, picked.end.month, picked.end.day);
       _dateFilter = 'Tous';
     });
+    _load(resetPage: true);
   }
 
   Widget _buildDateResetRow({bool compact = false}) {
@@ -1431,22 +1551,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       alignment: compact ? WrapAlignment.start : WrapAlignment.end,
       children: [
         if (_dateStart != null || _dateEnd != null)
-          TextButton(
-            onPressed: () => setState(() {
-              _dateStart = null;
-              _dateEnd = null;
-            }),
-            child: const Text('Effacer'),
-          ),
+          TextButton(onPressed: _clearDateFilter, child: const Text('Effacer')),
         TextButton(
-          onPressed: () => setState(() {
-            _statusFilter = 'Tous';
-            _workflowFilter = 'Tous';
-            _dateFilter = 'Tous';
-            _dateStart = null;
-            _dateEnd = null;
-            _searchCtrl.clear();
-          }),
+          onPressed: _resetAllFilters,
           child: const Text('Réinitialiser les filtres'),
         ),
       ],
@@ -1542,6 +1649,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       'ref': 140,
       'refmission': 110,
       'langue': 140,
+      'typeMission': 210,
       'datemission': 140,
       'heuredebut': 130,
       'duree': 110,
@@ -1552,12 +1660,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       'telephone': 150,
       'mobile': 150,
       'facture': 150,
-      'statut': 140,
+      'statut': 220,
       'createur': 170,
       'datecrea': 160,
       'dateModif': 170,
       'modifiePar': 170,
-      'actions': 130,
+      'actions': 220,
     };
     final double w = widths[keyWidth] ?? 140;
     return DataCell(
@@ -1568,12 +1676,55 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     );
   }
 
+  DataCell _statusCell(String statusCode) {
+    const Map<String, double> widths = {
+      'statut': 220,
+    };
+    final displayStatus =
+        statusCode.trim().isEmpty ? '—' : _labelForStatus(statusCode);
+    final isCancelled = statusCode.trim() == '9';
+    return DataCell(
+      SizedBox(
+        width: widths['statut']!,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(displayStatus, overflow: TextOverflow.ellipsis),
+            if (isCancelled)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1F2),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFFFDA4AF)),
+                ),
+                child: const Text(
+                  'Non facturable',
+                  style: TextStyle(
+                    color: Color(0xFFBE123C),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTableArea() {
     if (_busy) {
       return const Center(child: CircularProgressIndicator());
     }
     final rowsData = _filtered();
     final Set<int> visibleIds = rowsData
+        .where(_isMissionEligibleForBilling)
         .map((m) => int.tryParse((m['rowid'] ?? '0').toString()) ?? 0)
         .toSet();
     final bool anySelected = _selectAllAcrossFilters
@@ -1615,7 +1766,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                 columns: [
                   DataColumn(
                     label: Tooltip(
-                      message: 'Sélectionner toutes les missions visibles',
+                      message: 'Sélectionner toutes les missions visibles et facturables',
                       child: Checkbox(
                         tristate: true,
                         value: headerValue,
@@ -1659,6 +1810,15 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       label: _sortableHeader('Langue'),
                       onSort: (i, asc) => _sortByString(
                         (m) => (m['produit_ref'] ?? '').toString(),
+                        i,
+                        asc,
+                      ),
+                    ),
+                  if (_visibleColumns['typeMission'] ?? true)
+                    DataColumn(
+                      label: _sortableHeader('Type de mission'),
+                      onSort: (i, asc) => _sortByString(
+                        (m) => _missionTypesLabel(m['mission_types']),
                         i,
                         asc,
                       ),
@@ -1778,7 +1938,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     ),
                   if (_visibleColumns['statut'] ?? true)
                     DataColumn(
-                      label: _sortableHeader('Statut'),
+                      label: _sortableHeader('Statut mission'),
                       onSort: (i, asc) => _sortByNum(
                         (m) {
                           final v = m['mission_status'];
@@ -1847,13 +2007,18 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                 rows: rowsData.map<DataRow>((m) {
                   final rowId =
                       int.tryParse((m['rowid'] ?? '0').toString()) ?? 0;
-                  final selected = _selectAllAcrossFilters
+                  final isBillable = _isMissionEligibleForBilling(m);
+                  final selected = isBillable &&
+                    (_selectAllAcrossFilters
                       ? !_deselectedRowIds.contains(rowId)
-                      : _selectedRowIds.contains(rowId);
+                    : _selectedRowIds.contains(rowId));
                   final ref = (m['reference_devis'] ?? '').toString();
                   final libelle = (m['label'] ?? '').toString();
                   final langue = (m['produit_ref'] ?? '').toString();
-                  final dateMission = (m['datemission'] ?? '').toString();
+                  final missionTypes = _missionTypesLabel(m['mission_types']);
+                  final dateMission = _formatDisplayDateValue(
+                    m['datemission_iso'] ?? m['datemission'],
+                  );
                   final heureDebut = (m['heuredebutmission'] ?? '').toString();
                   final duree = (m['dureemission'] ?? '').toString();
                   final client = (m['client_name'] ?? '').toString();
@@ -1870,21 +2035,19 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       .trim());
                   final createur = ((m['creator_name'] ?? '').toString())
                       .trim();
-                  final dateCrea =
-                      (m['date_creation_iso'] ?? m['date_creation'] ?? '')
-                          .toString();
-                  final dateModif =
-                      (m['date_modification_iso'] ??
-                              m['date_modification'] ??
-                              '')
-                          .toString();
+                  final dateCrea = _formatDisplayDateTimeValue(
+                    m['date_creation_iso'] ?? m['date_creation'],
+                  );
+                  final dateModif = _formatDisplayDateTimeValue(
+                    m['date_modification_iso'] ?? m['date_modification'],
+                  );
                   final updatedBy = (m['updated_by'] ?? '').toString();
                   final statutTxt = (m['mission_status'] ?? '').toString();
                   final cells = <DataCell>[
                     DataCell(
                       Checkbox(
                         value: selected,
-                        onChanged: (v) {
+                        onChanged: isBillable ? (v) {
                           setState(() {
                             if (_selectAllAcrossFilters) {
                               if ((v ?? false)) {
@@ -1900,7 +2063,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                               }
                             }
                           });
-                        },
+                        } : null,
                       ),
                     ),
                   ];
@@ -1912,6 +2075,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   }
                   if (_visibleColumns['langue'] ?? true) {
                     cells.add(_cell(langue, keyWidth: 'langue'));
+                  }
+                  if (_visibleColumns['typeMission'] ?? true) {
+                    cells.add(_cell(missionTypes, keyWidth: 'typeMission'));
                   }
                   if (_visibleColumns['datemission'] ?? true) {
                     cells.add(_cell(dateMission, keyWidth: 'datemission'));
@@ -1960,10 +2126,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     );
                   }
                   if (_visibleColumns['statut'] ?? true) {
-                    final displayStatus = statutTxt.isEmpty
-                        ? '—'
-                        : _labelForStatus(statutTxt);
-                    cells.add(_cell(displayStatus, keyWidth: 'statut'));
+                    cells.add(_statusCell(statutTxt));
                   }
                   if (_visibleColumns['createur'] ?? true) {
                     cells.add(
@@ -1975,18 +2138,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   }
                   if (_visibleColumns['datecrea'] ?? true) {
                     cells.add(
-                      _cell(
-                        dateCrea.isEmpty ? '—' : dateCrea,
-                        keyWidth: 'datecrea',
-                      ),
+                      _cell(dateCrea, keyWidth: 'datecrea'),
                     );
                   }
                   if (_visibleColumns['dateModif'] ?? false) {
                     cells.add(
-                      _cell(
-                        dateModif.isEmpty ? '—' : dateModif,
-                        keyWidth: 'dateModif',
-                      ),
+                      _cell(dateModif, keyWidth: 'dateModif'),
                     );
                   }
                   if (_visibleColumns['modifiePar'] ?? false) {
@@ -2001,36 +2158,50 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     cells.add(
                       DataCell(
                         SizedBox(
-                          width: 120,
+                          width: 210,
                           child: Row(
                             children: [
-                              IconButton(
+                              TextButton.icon(
+                                onPressed: () =>
+                                    _showMissionFormDialog(mission: m),
                                 icon: const Icon(
                                   Icons.edit,
                                   color: Color(0xFF000091),
-                                  size: 20,
+                                  size: 18,
                                 ),
-                                tooltip: 'Modifier',
-                                onPressed: () =>
-                                    _showMissionFormDialog(mission: m),
+                                label: const Text('Editer'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF000091),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  minimumSize: const Size(0, 36),
+                                ),
                               ),
                               const SizedBox(width: 4),
-                              IconButton(
+                              TextButton.icon(
                                 icon: const Icon(
                                   Icons.delete,
                                   color: Color(0xFFCE0500),
-                                  size: 20,
+                                  size: 18,
                                 ),
-                                tooltip: 'Supprimer',
+                                label: const Text('Supprimer'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFFCE0500),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  minimumSize: const Size(0, 36),
+                                ),
                                 onPressed: () async {
                                   final confirm = await showDialog<bool>(
                                     context: context,
                                     builder: (ctx) => AlertDialog(
-                                      title: const Text(
-                                        'Supprimer la mission ?',
-                                      ),
+                                      title: const Text('Annuler la mission ?'),
                                       content: const Text(
-                                        'Cette action est irréversible.',
+                                        'La mission passera au statut Annulé.',
                                       ),
                                       actions: [
                                         TextButton(
@@ -2041,7 +2212,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                                         ElevatedButton(
                                           onPressed: () =>
                                               Navigator.pop(ctx, true),
-                                          child: const Text('Supprimer'),
+                                          child: const Text('Confirmer'),
                                         ),
                                       ],
                                     ),
@@ -2054,7 +2225,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                                   if (ok) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text('Mission supprimée'),
+                                        content: Text('Mission annulée'),
                                       ),
                                     );
                                     _load();
@@ -2077,7 +2248,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   }
                   return DataRow(
                     selected: selected,
-                    onSelectChanged: (v) {
+                    onSelectChanged: isBillable ? (v) {
                       setState(() {
                         if (_selectAllAcrossFilters) {
                           if ((v ?? false)) {
@@ -2093,7 +2264,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                           }
                         }
                       });
-                    },
+                    } : null,
                     cells: cells,
                   );
                 }).toList(),
@@ -2222,6 +2393,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   bool _lookupsLoading = true;
   bool _submitting = false;
   String? _validationMessage;
+  String? _successMessage;
+  bool _showCreatedSummary = false;
+  Map<String, dynamic>? _createdMissionSnapshot;
   List<Map<String, dynamic>> _interpretes = <Map<String, dynamic>>[];
   List<ClientSummary> _clientSummaries = <ClientSummary>[];
   String _initialClientName = '';
@@ -2569,6 +2743,250 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
         .toList();
   }
 
+  bool get _isEditingExistingMission =>
+      (_missionId ?? 0) > 0 && (!widget.isCreation || _showCreatedSummary == false);
+
+  Map<String, dynamic> _buildMissionSnapshot(MissionApiResult result) {
+    final dynamic rawId = result.data?['id'];
+    final int? createdId = rawId == null ? null : int.tryParse(rawId.toString());
+    final String ref = (result.data?['ref'] ?? '').toString().trim();
+    return <String, dynamic>{
+      'rowid': createdId ?? _missionId,
+      'reference_devis': ref,
+      'mission_types': _selectedMissionTypes.toList(),
+      'label': _labelCtrl.text.trim(),
+      'datemission': _dateCtrl.text.trim(),
+      'heuredebutmission': _heureCtrl.text.trim(),
+      'dureemission': _dureeCtrl.text.trim(),
+      'client_name': _clientCtrl.text.trim(),
+      'contact_name': _contactCtrl.text.trim(),
+      'interpreter_name': _interpreterCtrl.text.trim(),
+      'produit_ref': _langueCtrl.text.trim(),
+      'mission_status': _selectedStatusCode,
+      'commentaires': _commentaireCtrl.text.trim(),
+    };
+  }
+
+  void _startNewMissionEntry() {
+    setState(() {
+      _missionId = null;
+      _createdMissionSnapshot = null;
+      _showCreatedSummary = false;
+      _successMessage = null;
+      _resetForm();
+    });
+  }
+
+  void _startDuplicatedMissionEntry() {
+    setState(() {
+      _missionId = null;
+      _showCreatedSummary = false;
+      _successMessage = null;
+      _validationMessage = null;
+    });
+  }
+
+  Widget _buildSummaryField(String label, String value) {
+    final displayValue = value.trim().isEmpty ? '—' : value.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF4B5563),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            displayValue,
+            style: const TextStyle(
+              fontSize: 15,
+              color: Color(0xFF111827),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreatedMissionSummary() {
+    final snapshot = _createdMissionSnapshot!;
+    final String statusLabel = widget.labelForStatus(
+      (snapshot['mission_status'] ?? '').toString(),
+    );
+    final String missionTypes = widget
+        .decodeMissionTypes(snapshot['mission_types'])
+        .join(', ');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD0D5DD)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_successMessage != null) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF81C784)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(
+                      Icons.check_circle,
+                      color: Color(0xFF2E7D32),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _successMessage!,
+                      style: const TextStyle(
+                        color: Color(0xFF1B5E20),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Mission créée',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showCreatedSummary = false;
+                    _successMessage = null;
+                  });
+                },
+                icon: const Icon(Icons.edit),
+                label: const Text('Modifier'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _startDuplicatedMissionEntry,
+                icon: const Icon(Icons.content_copy),
+                label: const Text('Dupliquer'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _startNewMissionEntry,
+                icon: const Icon(Icons.add),
+                label: const Text('Nouvelle mission'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 32,
+            runSpacing: 4,
+            children: [
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Réf. mission',
+                  (snapshot['reference_devis'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField('Statut', statusLabel),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField('Type de mission', missionTypes),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Libellé',
+                  (snapshot['label'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Date de mission',
+                  (snapshot['datemission'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Heure de début',
+                  (snapshot['heuredebutmission'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Durée',
+                  (snapshot['dureemission'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Société demandeuse',
+                  (snapshot['client_name'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Personne demandeuse',
+                  (snapshot['contact_name'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Interprète',
+                  (snapshot['interpreter_name'] ?? '').toString(),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: _buildSummaryField(
+                  'Langue',
+                  (snapshot['produit_ref'] ?? '').toString(),
+                ),
+              ),
+            ],
+          ),
+          _buildSummaryField(
+            'Commentaires',
+            (snapshot['commentaires'] ?? '').toString(),
+          ),
+        ],
+      ),
+    );
+  }
+
   String? _validateMissionForm() {
     if ((_selectedContactId ?? 0) <= 0) {
       return 'Sélectionnez une personne demandeuse';
@@ -2601,15 +3019,17 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     if (validationMessage != null) {
       setState(() {
         _validationMessage = validationMessage;
+        _successMessage = null;
       });
       return;
     }
     setState(() {
       _validationMessage = null;
+      _successMessage = null;
       _submitting = true;
     });
 
-    final bool isCreation = widget.isCreation;
+    final bool isCreation = (_missionId ?? 0) <= 0;
     final missionId = _missionId ?? 0;
     final messenger = ScaffoldMessenger.of(context);
     if (!isCreation && missionId <= 0) {
@@ -2699,11 +3119,10 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     );
     if (start != null) {
       payload['debutmission'] = widget.formatDateTimeForApi(start);
-      if ((parsedDuration ?? 0) > 0) {
-        payload['finmission'] = widget.formatDateTimeForApi(
-          start.add(Duration(minutes: parsedDuration!)),
-        );
-      }
+      final end = (parsedDuration ?? 0) > 0
+          ? start.add(Duration(minutes: parsedDuration!))
+          : start;
+      payload['finmission'] = widget.formatDateTimeForApi(end);
     }
 
     final int currentUserId = AuthManager.userId;
@@ -2719,20 +3138,42 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
         ? await MissionService.addMissionMap(payload)
         : await MissionService.updateMissionMap(payload);
     if (!mounted) return;
-    setState(() {
-      _submitting = false;
-    });
     if (result.success) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(isCreation ? 'Mission créée' : 'Mission mise à jour'),
-        ),
-      );
+      final snapshot = _buildMissionSnapshot(result);
+      final dynamic returnedId = result.data?['id'];
+      final int? resolvedMissionId = returnedId == null
+          ? int.tryParse((snapshot['rowid'] ?? '').toString())
+          : int.tryParse(returnedId.toString());
+      setState(() {
+        _submitting = false;
+        _validationMessage = null;
+        _missionId = resolvedMissionId ?? _missionId;
+        _createdMissionSnapshot = snapshot;
+        _showCreatedSummary = widget.embedded;
+        _successMessage = isCreation
+            ? 'Mission créée avec succès.'
+            : 'Mission mise à jour avec succès.';
+      });
+      if (!widget.embedded) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(isCreation ? 'Mission créée' : 'Mission mise à jour'),
+          ),
+        );
+      }
       widget.onSuccess?.call(isCreation);
-      if (widget.embedded && isCreation) {
-        _resetForm();
+      if (widget.embedded) {
+        _formScrollCtrl.animateTo(
+          0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
       }
     } else {
+      setState(() {
+        _submitting = false;
+        _successMessage = null;
+      });
       final msg = widget.friendlyMissionError(
         result.message,
         isCreation: isCreation,
@@ -2763,6 +3204,8 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     _selectedStatusCode = _statusCodes.isEmpty ? '1' : _statusCodes.first;
     _contactOptions = <ContactInfo>[];
     _contactsCache.clear();
+    _validationMessage = null;
+    _successMessage = null;
     _selectedMissionTypes = widget.missionTypeChoices.contains('Interprétariat')
         ? {'Interprétariat'}
         : <String>{};
@@ -2786,15 +3229,17 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
       child: SingleChildScrollView(
         controller: _formScrollCtrl,
         padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_lookupsLoading)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 16.0),
-                child: LinearProgressIndicator(minHeight: 2),
-              ),
-            Row(
+        child: _showCreatedSummary && widget.embedded && _createdMissionSnapshot != null
+            ? _buildCreatedMissionSummary()
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_lookupsLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 16.0),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
@@ -3392,38 +3837,38 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                 );
               },
             ),
-            if (_validationMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _validationMessage!,
-                style: const TextStyle(color: Colors.redAccent),
-              ),
-            ],
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (widget.onCancel != null) ...[
-                  TextButton(
-                    onPressed: _submitting ? null : widget.onCancel,
-                    child: const Text('Annuler'),
+                  if (_validationMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _validationMessage!,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (widget.onCancel != null) ...[
+                        TextButton(
+                          onPressed: _submitting ? null : widget.onCancel,
+                          child: const Text('Annuler'),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      FilledButton(
+                        onPressed: _submitting ? null : _handleSubmit,
+                        child: _submitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(_isEditingExistingMission ? 'Enregistrer' : 'Créer'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
                 ],
-                FilledButton(
-                  onPressed: _submitting ? null : _handleSubmit,
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(widget.isCreation ? 'Créer' : 'Enregistrer'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
       ),
     );
   }

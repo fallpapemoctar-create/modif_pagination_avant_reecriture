@@ -51,6 +51,29 @@ function normalizeMissionTypesField($value): array {
     return array_keys($result);
 }
 
+function isZeroDateValue($value): bool {
+    if ($value === null) {
+        return true;
+    }
+    $trimmed = trim((string)$value);
+    if ($trimmed === '') {
+        return true;
+    }
+    return preg_match('/^0{4}-0{2}-0{2}(?: 0{2}:0{2}:0{2})?$/', $trimmed) === 1;
+}
+
+function normalizeIsoDateValue($value): ?string {
+    if (isZeroDateValue($value)) {
+        return null;
+    }
+    try {
+        $dateTime = new DateTime((string)$value);
+        return $dateTime->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
+        return trim((string)$value) !== '' ? (string)$value : null;
+    }
+}
+
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
@@ -62,26 +85,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 try {
-    // Params: page, pageSize, q (search)
+    // Params: page, pageSize, q (search), dateStart, dateEnd, billedStatus, missionStatus, missionType
     $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
     $pageSize = isset($_GET['pageSize']) ? intval($_GET['pageSize']) : 50;
     if ($pageSize <= 0) $pageSize = 50;
     if ($pageSize > 500) $pageSize = 500; // safety cap
     $offset = ($page - 1) * $pageSize;
     $q = isset($_GET['q']) ? trim($_GET['q']) : '';
+    $dateStart = isset($_GET['dateStart']) ? trim($_GET['dateStart']) : '';
+    $dateEnd = isset($_GET['dateEnd']) ? trim($_GET['dateEnd']) : '';
+    $billedStatus = isset($_GET['billedStatus']) ? trim($_GET['billedStatus']) : '';
+    $missionStatus = isset($_GET['missionStatus']) ? trim($_GET['missionStatus']) : '';
+    $missionType = isset($_GET['missionType']) ? trim($_GET['missionType']) : '';
     $exportAll = isset($_GET['exportAll']) && ($_GET['exportAll'] === '1' || strtolower($_GET['exportAll']) === 'true');
-
-    $where = "m.status <> 9";
-    $params = [];
-    if ($q !== '') {
-        $where .= " AND (m.ref LIKE :q OR u.firstname LIKE :q OR u.lastname LIKE :q OR s.nom LIKE :q OR p.ref LIKE :q OR cb.invoice_number LIKE :q OR cb.status_label LIKE :q)";
-        $params[':q'] = "%$q%";
-    }
 
     // Detect optional columns (compat with varying schemas)
     $modifierColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'fk_user_modif') ? 'fk_user_modif' : null;
     $hasTmsColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'tms');
     $hasMissionTypesColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'mission_types');
+
+    $where = "1=1";
+    $params = [];
+    if ($q !== '') {
+        $missionTypesSearch = $hasMissionTypesColumn ? " OR m.mission_types LIKE :q" : "";
+        $where .= " AND (m.ref LIKE :q OR u.firstname LIKE :q OR u.lastname LIKE :q OR s.nom LIKE :q OR p.ref LIKE :q OR cb.invoice_number LIKE :q OR cb.status_label LIKE :q" . $missionTypesSearch . ")";
+        $params[':q'] = "%$q%";
+    }
+    if ($dateStart !== '') {
+        $startDate = DateTime::createFromFormat('Y-m-d', $dateStart);
+        if ($startDate !== false) {
+            $where .= " AND m.datemission >= :dateStart";
+            $params[':dateStart'] = $startDate->format('Y-m-d');
+        }
+    }
+    if ($dateEnd !== '') {
+        $endDate = DateTime::createFromFormat('Y-m-d', $dateEnd);
+        if ($endDate !== false) {
+            $endDate->modify('+1 day');
+            $where .= " AND m.datemission < :dateEndExclusive";
+            $params[':dateEndExclusive'] = $endDate->format('Y-m-d');
+        }
+    }
+    if ($billedStatus !== '') {
+        $normalizedBilledStatus = mb_strtolower($billedStatus, 'UTF-8');
+        if ($normalizedBilledStatus === 'brouillon') {
+            $where .= " AND (b.status IS NULL OR TRIM(b.status) = '' OR LOWER(b.status) = :billedStatus)";
+            $params[':billedStatus'] = 'brouillon';
+        } else {
+            $where .= " AND LOWER(b.status) = :billedStatus";
+            $params[':billedStatus'] = $normalizedBilledStatus;
+        }
+    }
+    if ($missionStatus !== '') {
+        $parsedMissionStatus = intval($missionStatus);
+        $where .= " AND m.status = :missionStatus";
+        $params[':missionStatus'] = $parsedMissionStatus;
+    }
+    if ($missionType !== '') {
+        if ($hasMissionTypesColumn) {
+            $where .= " AND LOWER(m.mission_types) LIKE :missionType";
+            $params[':missionType'] = '%' . mb_strtolower($missionType, 'UTF-8') . '%';
+        } else {
+            $where .= " AND 1 = 0";
+        }
+    }
+
     // Detect correct creator column name (fk_user_creator vs fk_user_create)
     $creatorColumn = null;
     try {
@@ -114,6 +182,15 @@ try {
         LEFT JOIN llx_user u ON m.nominterprete = u.rowid
         LEFT JOIN llx_product p ON m.langue = p.rowid
         LEFT JOIN llx_societe s ON s.rowid = m.fk_soc
+        LEFT JOIN (
+            SELECT bb.ref, bb.status
+            FROM tble_mission_billed bb
+            INNER JOIN (
+                SELECT ref, MAX(billed_at) AS max_billed_at
+                FROM tble_mission_billed
+                GROUP BY ref
+            ) last ON last.ref = bb.ref AND last.max_billed_at = bb.billed_at
+        ) b ON b.ref = m.ref
         LEFT JOIN (
             SELECT cb_inner.mission_ref,
                    cb_inner.invoice_number,
@@ -243,39 +320,19 @@ try {
         // Build creator full name
         $r['creator_name'] = trim(($r['creator_firstname'] ?? '') . ' ' . ($r['creator_lastname'] ?? ''));
         // Format date to ISO if needed
-        if (!empty($r['datemission'])) {
-            try {
-                $dt3 = new DateTime($r['datemission']);
-                $r['datemission_iso'] = $dt3->format('Y-m-d H:i:s');
-            } catch (Exception $e) {
-                $r['datemission_iso'] = $r['datemission'];
-            }
-        } else {
-            $r['datemission_iso'] = null;
-        }
-        if (!empty($r['date_creation'])) {
-            try {
-                $dc = new DateTime($r['date_creation']);
-                $r['date_creation_iso'] = $dc->format('Y-m-d H:i:s');
-            } catch (Exception $e) {
-                $r['date_creation_iso'] = $r['date_creation'];
-            }
-        } else {
-            $r['date_creation_iso'] = null;
-        }
+        $r['datemission'] = isZeroDateValue($r['datemission'] ?? null)
+            ? null
+            : $r['datemission'];
+        $r['datemission_iso'] = normalizeIsoDateValue($r['datemission'] ?? null);
+
+        $r['date_creation'] = isZeroDateValue($r['date_creation'] ?? null)
+            ? null
+            : $r['date_creation'];
+        $r['date_creation_iso'] = normalizeIsoDateValue($r['date_creation'] ?? null);
 
         $rawModDate = $r['date_modification_raw'] ?? null;
-        $r['date_modification'] = $rawModDate;
-        if (!empty($rawModDate)) {
-            try {
-                $dm = new DateTime($rawModDate);
-                $r['date_modification_iso'] = $dm->format('Y-m-d H:i:s');
-            } catch (Exception $e) {
-                $r['date_modification_iso'] = $rawModDate;
-            }
-        } else {
-            $r['date_modification_iso'] = null;
-        }
+        $r['date_modification'] = isZeroDateValue($rawModDate) ? null : $rawModDate;
+        $r['date_modification_iso'] = normalizeIsoDateValue($r['date_modification'] ?? null);
 
         $updatedBy = trim(($r['modifier_firstname'] ?? '') . ' ' . ($r['modifier_lastname'] ?? ''));
         $r['updated_by'] = $updatedBy !== '' ? $updatedBy : null;
