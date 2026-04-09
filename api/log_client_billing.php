@@ -19,8 +19,32 @@ function respond(int $status, array $payload): void {
     exit;
 }
 
+function billingCreationLog(string $event, array $context = []): void {
+    $safeContext = $context;
+    if (isset($safeContext['pdf_base64'])) {
+        unset($safeContext['pdf_base64']);
+    }
+    if (isset($safeContext['invoice_lines']) && is_array($safeContext['invoice_lines'])) {
+        $safeContext['invoice_lines_count'] = count($safeContext['invoice_lines']);
+        unset($safeContext['invoice_lines']);
+    }
+    if (isset($safeContext['missions']) && is_array($safeContext['missions'])) {
+        $safeContext['missions_count'] = count($safeContext['missions']);
+    }
+
+    $line = sprintf(
+        "[%s] %s %s%s",
+        date('Y-m-d H:i:s'),
+        $event,
+        json_encode($safeContext, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        PHP_EOL
+    );
+    @file_put_contents(__DIR__ . '/billing_creation.log', $line, FILE_APPEND);
+}
+
 $input = json_decode(file_get_contents('php://input'), true);
 if (!is_array($input)) {
+    billingCreationLog('invalid_payload', ['raw_type' => gettype($input)]);
     respond(400, ['success' => false, 'error' => 'Payload JSON invalide.']);
 }
 
@@ -65,9 +89,59 @@ $pdfRelativePath = null;
 $pdfSize = null;
 $pdfStoredFilename = null;
 
+billingCreationLog('request_received', [
+    'client_name' => $clientName,
+    'invoice_number' => $invoiceNumber,
+    'period_month' => $periodMonthKey,
+    'status_code' => $statusCode,
+    'status_label' => $statusLabel,
+    'amount_total' => $amountTotal,
+    'draft_key' => $draftKey,
+    'user_id' => $userId,
+    'user_name' => $userName,
+    'has_pdf' => $pdfBinary !== null,
+    'missions' => $missions,
+    'invoice_lines' => $input['invoice_lines'] ?? [],
+]);
+
 try {
     ensureClientBillingTable($pdo);
     ensureClientInvoiceLinesTable($pdo);
+
+    if ($clientName !== '' && $periodMonthKey !== null) {
+                $duplicateStmt = $pdo->prepare("SELECT cb.invoice_number
+                        FROM tble_client_billed cb
+                        WHERE cb.client_name = :client_name
+                            AND cb.invoice_number <> :invoice_number
+                            AND LOWER(TRIM(cb.status_code)) IN ('draft', 'validated')
+                            AND EXISTS (
+                                    SELECT 1
+                                    FROM tble_client_invoice_lines cil
+                                    WHERE cil.invoice_number = cb.invoice_number
+                                        AND cil.period_month = :period_month
+                            )
+                        ORDER BY cb.billed_at DESC, cb.id DESC
+                        LIMIT 1");
+        $duplicateStmt->execute([
+            ':client_name' => $clientName,
+            ':period_month' => $periodMonthKey,
+            ':invoice_number' => $invoiceNumber,
+        ]);
+        $existingInvoice = $duplicateStmt->fetchColumn();
+        if ($existingInvoice) {
+            billingCreationLog('duplicate_detected', [
+                'client_name' => $clientName,
+                'period_month' => $periodMonthKey,
+                'invoice_number' => $invoiceNumber,
+                'existing_invoice_number' => $existingInvoice,
+            ]);
+            respond(409, [
+                'success' => false,
+                'error' => 'Une facture existe déjà pour ce client et ce mois.',
+                'invoice_number' => $existingInvoice,
+            ]);
+        }
+    }
 
     if ($pdfBinary !== null) {
         $storageDir = __DIR__ . '/../build/client_billing';
@@ -78,10 +152,19 @@ try {
         $pdfStoredFilename = $pdfFilenameBase . '_' . date('Ymd_His') . '_' . $uniqueSuffix . '.pdf';
         $target = $storageDir . '/' . $pdfStoredFilename;
         if (file_put_contents($target, $pdfBinary) === false) {
+            billingCreationLog('pdf_write_failed', [
+                'invoice_number' => $invoiceNumber,
+                'target' => $target,
+            ]);
             respond(500, ['success' => false, 'error' => "Impossible d'enregistrer le PDF."]);
         }
         $pdfRelativePath = str_replace(__DIR__ . '/../', '', $target);
         $pdfSize = strlen($pdfBinary);
+        billingCreationLog('pdf_written', [
+            'invoice_number' => $invoiceNumber,
+            'pdf_path' => $pdfRelativePath,
+            'pdf_size' => $pdfSize,
+        ]);
     }
 
     $invoiceLines = [];
@@ -288,6 +371,16 @@ try {
 
     $pdo->commit();
 
+    billingCreationLog('request_succeeded', [
+        'invoice_number' => $invoiceNumber,
+        'client_name' => $clientName,
+        'period_month' => $periodMonthKey,
+        'status_code' => $statusCode,
+        'inserted_rows' => $inserted,
+        'invoice_lines_count' => count($invoiceLines),
+        'pdf_path' => $pdfRelativePath,
+    ]);
+
     respond(200, [
         'success' => true,
         'rows' => $inserted,
@@ -299,5 +392,11 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
+    billingCreationLog('request_failed', [
+        'invoice_number' => $invoiceNumber,
+        'client_name' => $clientName,
+        'period_month' => $periodMonthKey,
+        'error' => $e->getMessage(),
+    ]);
     respond(500, ['success' => false, 'error' => $e->getMessage()]);
 }

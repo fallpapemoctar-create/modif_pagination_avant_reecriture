@@ -64,7 +64,7 @@ try {
 
     $whereSql = implode(' AND ', $where);
 
-    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM tble_client_billed cb LEFT JOIN llx_missionsplanet_mission m ON m.ref = cb.mission_ref WHERE $whereSql");
+    $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT cb.invoice_number) FROM tble_client_billed cb LEFT JOIN llx_missionsplanet_mission m ON m.ref = cb.mission_ref WHERE $whereSql");
     foreach ($params as $key => $value) {
         $countStmt->bindValue($key, $value);
     }
@@ -73,29 +73,41 @@ try {
 
     $dataSql = "
         SELECT
-            cb.id,
-            cb.category,
             cb.invoice_number,
-            cb.invoice_total_ht,
-            cb.amount_ht,
-            cb.client_name,
-            cb.mission_ref,
-            cb.status_code,
-            cb.status_label,
-            cb.billed_at,
-            cb.pdf_size,
-            cb.created_by,
-            cb.created_by_name,
-            cb.notes,
-            cb.created_at,
-            cb.updated_at,
-            cb.pdf_filename,
-            cb.pdf_path,
-            m.label AS mission_label
+            MAX(cb.id) AS id,
+            MAX(cb.category) AS category,
+            COALESCE(MAX(NULLIF(cb.invoice_total_ht, 0)), SUM(COALESCE(cb.amount_ht, 0))) AS invoice_total_ht,
+            SUM(COALESCE(cb.amount_ht, 0)) AS amount_ht,
+            MAX(cb.client_name) AS client_name,
+            CASE
+                WHEN COUNT(DISTINCT COALESCE(cb.mission_ref, '')) = 1 THEN MAX(cb.mission_ref)
+                ELSE NULL
+            END AS mission_ref,
+            MAX(cb.status_code) AS status_code,
+            MAX(cb.status_label) AS status_label,
+            MAX(cb.billed_at) AS billed_at,
+            MAX(cb.pdf_size) AS pdf_size,
+            MAX(cb.created_by) AS created_by,
+            MAX(cb.created_by_name) AS created_by_name,
+            MAX(cb.notes) AS notes,
+            MAX(cb.created_at) AS created_at,
+            MAX(cb.updated_at) AS updated_at,
+            MAX(cb.pdf_filename) AS pdf_filename,
+            MAX(cb.pdf_path) AS pdf_path,
+            (
+                SELECT MAX(cil.period_month)
+                FROM tble_client_invoice_lines cil
+                WHERE cil.invoice_number = cb.invoice_number
+            ) AS period_month,
+            CASE
+                WHEN COUNT(DISTINCT COALESCE(cb.mission_ref, '')) = 1 THEN MAX(m.label)
+                ELSE NULL
+            END AS mission_label
         FROM tble_client_billed cb
         LEFT JOIN llx_missionsplanet_mission m ON m.ref = cb.mission_ref
         WHERE $whereSql
-        ORDER BY cb.billed_at DESC, cb.id DESC
+        GROUP BY cb.invoice_number
+        ORDER BY MAX(cb.billed_at) DESC, MAX(cb.id) DESC
         LIMIT :offset, :limit";
 
     $dataStmt = $pdo->prepare($dataSql);

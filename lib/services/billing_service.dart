@@ -11,6 +11,10 @@ import '../core/models/invoice_line.dart';
 class BillingService {
   static String get _baseUrl => AppConfig.instance.apiBaseUrl;
 
+  static String translatePaymentTermLabel(String value) {
+    return ClientPaymentTerm.translateLabel(value);
+  }
+
   static Future<ClientInvoiceListResult> getClientInvoices({
     int page = 1,
     int pageSize = 50,
@@ -114,10 +118,10 @@ class BillingService {
     required double amountTotal,
     required List<Map<String, dynamic>> missions,
     required List<InvoiceLine> invoiceLines,
-    required Uint8List pdfBytes,
-    required String pdfFilename,
     required int userId,
     required String userName,
+    Uint8List? pdfBytes,
+    String? pdfFilename,
     DateTime? periodMonth,
     String? draftKey,
     String? notes,
@@ -133,13 +137,14 @@ class BillingService {
       'invoice_lines': invoiceLines.map((line) => line.toJson()).toList(),
       'user_id': userId,
       'user_name': userName,
-      'pdf_filename': pdfFilename,
-      'pdf_base64': base64Encode(pdfBytes),
       if (periodMonth != null)
         'period_month': DateTime(
           periodMonth.year,
           periodMonth.month,
         ).toIso8601String(),
+      if (pdfFilename != null && pdfFilename.trim().isNotEmpty)
+        'pdf_filename': pdfFilename.trim(),
+      if (pdfBytes != null) 'pdf_base64': base64Encode(pdfBytes),
       if (draftKey != null && draftKey.isNotEmpty) 'draft_key': draftKey,
       if (notes != null && notes.isNotEmpty) 'notes': notes,
     };
@@ -150,12 +155,18 @@ class BillingService {
       body: jsonEncode(payload),
     );
 
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Échec de l\'enregistrement de la facturation client (${response.statusCode}).',
-      );
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      decoded = null;
     }
-    final decoded = jsonDecode(response.body);
+    if (response.statusCode != 200) {
+      final message = decoded is Map && decoded['error'] is String
+          ? decoded['error'] as String
+          : 'Échec de l\'enregistrement de la facturation client (${response.statusCode}).';
+      throw Exception(message);
+    }
     if (decoded is! Map || decoded['success'] != true) {
       final message = decoded is Map && decoded['error'] is String
           ? decoded['error'] as String
@@ -461,6 +472,7 @@ class ClientInvoiceSummary {
     required this.amountHt,
     required this.invoiceTotalHt,
     required this.billedAt,
+    this.periodMonth,
     this.missionRef,
     this.pdfFilename,
     this.pdfPath,
@@ -489,6 +501,7 @@ class ClientInvoiceSummary {
       amountHt: amountHt ?? this.amountHt,
       invoiceTotalHt: invoiceTotalHt ?? this.invoiceTotalHt,
       billedAt: billedAt,
+      periodMonth: periodMonth,
       missionRef: missionRef,
       pdfFilename: pdfFilename,
       pdfPath: pdfPath,
@@ -507,9 +520,14 @@ class ClientInvoiceSummary {
     DateTime? billedAt;
     DateTime? createdAt;
     DateTime? updatedAt;
+    DateTime? periodMonth;
     final billedRaw = json['billed_at'];
     if (billedRaw is String && billedRaw.trim().isNotEmpty) {
       billedAt = DateTime.tryParse(billedRaw.trim());
+    }
+    final periodRaw = json['period_month'];
+    if (periodRaw is String && periodRaw.trim().isNotEmpty) {
+      periodMonth = DateTime.tryParse(periodRaw.trim());
     }
     final createdRaw = json['created_at'];
     if (createdRaw is String && createdRaw.trim().isNotEmpty) {
@@ -529,6 +547,7 @@ class ClientInvoiceSummary {
       amountHt: _parseDecimal(json['amount_ht']),
       invoiceTotalHt: _parseDecimal(json['invoice_total_ht']),
       billedAt: billedAt,
+      periodMonth: periodMonth,
       pdfFilename: json['pdf_filename']?.toString(),
       pdfPath: json['pdf_path']?.toString(),
       pdfSize: json['pdf_size'] is num
@@ -554,6 +573,7 @@ class ClientInvoiceSummary {
   final double amountHt;
   final double invoiceTotalHt;
   final DateTime? billedAt;
+  final DateTime? periodMonth;
   final String? missionRef;
   final String? missionLabel;
   final String? pdfFilename;
@@ -649,53 +669,116 @@ class ClientPaymentTerm {
     return '$trimmedLabel ($trimmedCode)';
   }
 
+  static String translateLabel(String value) {
+    return _translatePaymentTerm(value);
+  }
+
   static String _translatePaymentTerm(String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) {
       return '';
     }
 
-    final normalized = trimmed.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final suffixMatch = RegExp(r'\s*\(([A-Z0-9_]+)\)\s*$').firstMatch(trimmed);
+    final suffix = suffixMatch?.group(1);
+    final baseValue = suffixMatch == null
+        ? trimmed
+        : trimmed.substring(0, suffixMatch.start).trim();
+
+    final normalized = baseValue.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
     const directMap = <String, String>{
       'immediate payment': 'Paiement immédiat',
       'payment in advance': 'Paiement d\'avance',
       'advance payment': 'Paiement d\'avance',
       'cash on delivery': 'Paiement à la livraison',
+      'due on delivery': 'Paiement à la livraison',
+      'delivery': 'Paiement à la livraison',
       'payable on receipt': 'Paiement à réception',
       'upon receipt': 'Paiement à réception',
       'on receipt': 'Paiement à réception',
       'receipt': 'Paiement à réception',
       'due on receipt': 'Paiement à réception',
       'due upon receipt': 'Paiement à réception',
+      'due on order': 'Paiement à la commande',
+      'on order': 'Paiement à la commande',
+      'order': 'Paiement à la commande',
+      '50% on order, 50% on delivery':
+          '50 % à la commande, 50 % à la livraison',
+      '50% on order 50% on delivery': '50 % à la commande, 50 % à la livraison',
+      '50% à la commande, 50% à la livraison':
+          '50 % à la commande, 50 % à la livraison',
+      'pt_delivery': 'Paiement à la livraison',
+      'pt_order': 'Paiement à la commande',
+      'pt_5050': '50 % à la commande, 50 % à la livraison',
+      'recep': 'Paiement à réception',
       'comptant': 'Comptant',
     };
     final direct = directMap[normalized];
     if (direct != null) {
-      return direct;
+      return suffix == null ? direct : '$direct ($suffix)';
     }
 
     final endOfMonthMatch = RegExp(
       r'^(?:net\s*)?(\d+)\s*(?:day|days|jours?)\s*(?:end of month|eom|fin de mois)$',
       caseSensitive: false,
-    ).firstMatch(trimmed);
+    ).firstMatch(baseValue);
     if (endOfMonthMatch != null) {
-      return '${endOfMonthMatch.group(1)} jours fin de mois';
+      final translated = '${endOfMonthMatch.group(1)} jours fin de mois';
+      return suffix == null ? translated : '$translated ($suffix)';
+    }
+
+    final dueEndOfMonthMatch = RegExp(
+      r'^due in\s*(\d+)\s*days?,?\s*end of month$',
+      caseSensitive: false,
+    ).firstMatch(baseValue);
+    if (dueEndOfMonthMatch != null) {
+      final translated = '${dueEndOfMonthMatch.group(1)} jours fin de mois';
+      return suffix == null ? translated : '$translated ($suffix)';
     }
 
     final netMatch = RegExp(
       r'^(?:net\s*)?(\d+)\s*(?:day|days|jours?)\s*(?:net)?$',
       caseSensitive: false,
-    ).firstMatch(trimmed);
+    ).firstMatch(baseValue);
     if (netMatch != null) {
-      return '${netMatch.group(1)} jours';
+      final translated = '${netMatch.group(1)} jours';
+      return suffix == null ? translated : '$translated ($suffix)';
+    }
+
+    final dueInDaysMatch = RegExp(
+      r'^due in\s*(\d+)\s*days?$',
+      caseSensitive: false,
+    ).firstMatch(baseValue);
+    if (dueInDaysMatch != null) {
+      final translated = '${dueInDaysMatch.group(1)} jours';
+      return suffix == null ? translated : '$translated ($suffix)';
     }
 
     final simpleDaysMatch = RegExp(
       r'^(\d+)\s*(?:day|days)$',
       caseSensitive: false,
-    ).firstMatch(trimmed);
+    ).firstMatch(baseValue);
     if (simpleDaysMatch != null) {
-      return '${simpleDaysMatch.group(1)} jours';
+      final translated = '${simpleDaysMatch.group(1)} jours';
+      return suffix == null ? translated : '$translated ($suffix)';
+    }
+
+    final compactEndOfMonthCode = RegExp(
+      r'^(\d+)d(?:endmonth|endofmonth)$',
+      caseSensitive: false,
+    ).firstMatch(baseValue);
+    if (compactEndOfMonthCode != null) {
+      final translated = '${compactEndOfMonthCode.group(1)} jours fin de mois';
+      return suffix == null ? translated : '$translated ($suffix)';
+    }
+
+    final compactDaysCode = RegExp(
+      r'^(\d+)d$',
+      caseSensitive: false,
+    ).firstMatch(baseValue);
+    if (compactDaysCode != null) {
+      final translated = '${compactDaysCode.group(1)} jours';
+      return suffix == null ? translated : '$translated ($suffix)';
     }
 
     return trimmed;

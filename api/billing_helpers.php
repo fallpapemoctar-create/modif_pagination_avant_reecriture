@@ -138,6 +138,16 @@ function normalizeClientBillingStatus($value): array {
 
     $normalized = strtolower(trim((string) $value));
     switch ($normalized) {
+        case 'annulee':
+        case 'annulée':
+        case 'annule':
+        case 'annulé':
+        case 'cancelled':
+        case 'canceled':
+        case 'cancel':
+            $code = 'cancelled';
+            $label = 'Annulée';
+            break;
         case 'validée':
         case 'validee':
         case 'valide':
