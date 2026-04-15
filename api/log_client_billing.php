@@ -144,7 +144,7 @@ try {
     }
 
     if ($pdfBinary !== null) {
-        $storageDir = __DIR__ . '/../build/client_billing';
+        $storageDir = __DIR__ . '/../build/Factures_PDF';
         if (!is_dir($storageDir)) {
             mkdir($storageDir, 0775, true);
         }

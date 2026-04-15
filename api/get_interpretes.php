@@ -6,6 +6,12 @@ header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 
 try {
+    $q = isset($_GET['q']) ? trim($_GET['q']) : '';
+    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 250;
+    if ($limit <= 0 || $limit > 2000) {
+        $limit = 250;
+    }
+
     $sql = "
         SELECT 
             u.rowid,
@@ -42,10 +48,31 @@ try {
                 )
                 OR u.fk_country IS NOT NULL
             )
+    ";
+
+    $params = [];
+    if ($q !== '') {
+        $sql .= " AND (
+            u.lastname LIKE :search
+            OR u.firstname LIKE :search
+            OR CONCAT_WS(' ', u.lastname, u.firstname) LIKE :search
+            OR CONCAT_WS(' ', u.firstname, u.lastname) LIKE :search
+            OR u.email LIKE :search
+            OR u.interp_langues LIKE :search
+        )";
+        $params[':search'] = '%' . $q . '%';
+    }
+
+    $sql .= "
         ORDER BY u.lastname ASC, u.firstname ASC
+        LIMIT :limit
     ";
 
     $stmt = $pdo->prepare($sql);
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key, $value, PDO::PARAM_STR);
+    }
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->execute();
 
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);

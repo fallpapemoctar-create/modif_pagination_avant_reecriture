@@ -33,9 +33,14 @@ class ContactInfo {
 class ContactService {
   static String get _baseUrl => AppConfig.instance.apiBaseUrl;
 
-  static Future<List<ContactInfo>> getContactsForClient({required int clientId, int limit = 500}) async {
+  static Future<List<ContactInfo>> getContactsForClient({
+    required int clientId,
+    String? query,
+    int limit = 500,
+  }) async {
     final uri = Uri.parse("${_baseUrl}get_contacts.php").replace(queryParameters: {
       'client_id': clientId.toString(),
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
       'limit': limit.toString(),
     });
 

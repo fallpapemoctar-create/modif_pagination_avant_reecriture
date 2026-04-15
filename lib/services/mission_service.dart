@@ -126,6 +126,7 @@ class MissionService {
     int page = 1,
     int pageSize = 50,
     String? q,
+    String? requestingCompany,
     String? dateStart,
     String? dateEnd,
     String? billedStatus,
@@ -137,6 +138,8 @@ class MissionService {
         'page': page.toString(),
         'pageSize': pageSize.toString(),
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (requestingCompany != null && requestingCompany.trim().isNotEmpty)
+          'requestingCompany': requestingCompany.trim(),
         if (dateStart != null && dateStart.trim().isNotEmpty) 'dateStart': dateStart.trim(),
         if (dateEnd != null && dateEnd.trim().isNotEmpty) 'dateEnd': dateEnd.trim(),
         if (billedStatus != null && billedStatus.trim().isNotEmpty) 'billedStatus': billedStatus.trim(),
@@ -167,6 +170,7 @@ class MissionService {
 
   static Future<List<Map<String, dynamic>>> getMissionsDatatableAll({
     String? q,
+    String? requestingCompany,
     String? dateStart,
     String? dateEnd,
     String? billedStatus,
@@ -177,6 +181,8 @@ class MissionService {
       final uri = Uri.parse("${baseUrl}get_missions_datatable.php").replace(queryParameters: {
         'exportAll': '1',
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (requestingCompany != null && requestingCompany.trim().isNotEmpty)
+          'requestingCompany': requestingCompany.trim(),
         if (dateStart != null && dateStart.trim().isNotEmpty) 'dateStart': dateStart.trim(),
         if (dateEnd != null && dateEnd.trim().isNotEmpty) 'dateEnd': dateEnd.trim(),
         if (billedStatus != null && billedStatus.trim().isNotEmpty) 'billedStatus': billedStatus.trim(),
@@ -199,9 +205,17 @@ class MissionService {
   // ------------------------------------------------------------
   // GET : Liste des interprètes (annuaire)
   // ------------------------------------------------------------
-  static Future<List<Map<String, dynamic>>> getInterpretes() async {
+  static Future<List<Map<String, dynamic>>> getInterpretes({
+    String? query,
+    int limit = 250,
+  }) async {
     try {
-      final uri = Uri.parse("${baseUrl}get_interpretes.php");
+      final uri = Uri.parse("${baseUrl}get_interpretes.php").replace(
+        queryParameters: {
+          if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+          'limit': limit.toString(),
+        },
+      );
       final response = await http.get(uri);
       if (response.statusCode != 200) return [];
       final decoded = jsonDecode(response.body);

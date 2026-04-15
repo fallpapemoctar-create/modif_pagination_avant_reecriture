@@ -85,13 +85,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 try {
-    // Params: page, pageSize, q (search), dateStart, dateEnd, billedStatus, missionStatus, missionType
+    // Params: page, pageSize, q (search), requestingCompany, dateStart, dateEnd, billedStatus, missionStatus, missionType
     $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
     $pageSize = isset($_GET['pageSize']) ? intval($_GET['pageSize']) : 50;
     if ($pageSize <= 0) $pageSize = 50;
     if ($pageSize > 500) $pageSize = 500; // safety cap
     $offset = ($page - 1) * $pageSize;
     $q = isset($_GET['q']) ? trim($_GET['q']) : '';
+    $requestingCompany = isset($_GET['requestingCompany']) ? trim($_GET['requestingCompany']) : '';
     $dateStart = isset($_GET['dateStart']) ? trim($_GET['dateStart']) : '';
     $dateEnd = isset($_GET['dateEnd']) ? trim($_GET['dateEnd']) : '';
     $billedStatus = isset($_GET['billedStatus']) ? trim($_GET['billedStatus']) : '';
@@ -110,6 +111,10 @@ try {
         $missionTypesSearch = $hasMissionTypesColumn ? " OR m.mission_types LIKE :q" : "";
         $where .= " AND (m.ref LIKE :q OR u.firstname LIKE :q OR u.lastname LIKE :q OR s.nom LIKE :q OR p.ref LIKE :q OR cb.invoice_number LIKE :q OR cb.status_label LIKE :q" . $missionTypesSearch . ")";
         $params[':q'] = "%$q%";
+    }
+    if ($requestingCompany !== '') {
+        $where .= " AND s.nom LIKE :requestingCompany";
+        $params[':requestingCompany'] = "%$requestingCompany%";
     }
     if ($dateStart !== '') {
         $startDate = DateTime::createFromFormat('Y-m-d', $dateStart);

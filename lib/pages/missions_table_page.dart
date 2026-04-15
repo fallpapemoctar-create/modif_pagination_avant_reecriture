@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -38,6 +39,7 @@ class MissionsTablePage extends StatefulWidget {
 
 class _MissionsTablePageState extends State<MissionsTablePage> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _requestingCompanyCtrl = TextEditingController();
   final ScrollController _hScrollCtrl = ScrollController();
   final ScrollController _vScrollCtrl = ScrollController();
   static const Color _primaryBlue = Color(0xFF000091);
@@ -78,6 +80,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   // Mission status filter
   String _workflowFilter = 'Tous';
   String _missionTypeFilter = 'Tous';
+  String _requestingCompanyFilter = '';
   final List<String> _workflowOptions = const ['Tous', '0', '1', '9'];
   List<String> _languageOptions = <String>[];
   List<_AutocompleteEntry<String>> _languageEntries =
@@ -122,6 +125,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   DateTime? _dateEnd;
   int? _sortColumnIndex;
   bool _sortAscending = true;
+  Timer? _requestingCompanySearchDebounce;
+  int _requestingCompanySearchRequestId = 0;
+  bool _requestingCompanySearchLoading = false;
+  String _lastRequestingCompanySearchQuery = '';
+  List<ClientSummary> _requestingCompanySuggestions = <ClientSummary>[];
+  bool _requestingCompanyFieldListenerAttached = false;
   final Map<String, String> _workflowLabels = const {
     'Tous': 'Tous',
     '0': 'Brouillon',
@@ -131,10 +140,21 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   bool _routeArgsHandled = false;
 
   @override
+  void dispose() {
+    _requestingCompanySearchDebounce?.cancel();
+    _searchCtrl.dispose();
+    _requestingCompanyCtrl.dispose();
+    _hScrollCtrl.dispose();
+    _vScrollCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     _activeView = _MissionWorkspaceView.newMission;
     _loadLanguageOptions();
+    _loadRequestingCompanySuggestions();
     _load();
   }
 
@@ -310,7 +330,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     if (text.isEmpty) return '—';
     final parsed = DateTime.tryParse(text) ?? _parseMissionDate(text);
     if (parsed == null) return text;
-    final hasTime = text.contains(':') ||
+    final hasTime =
+        text.contains(':') ||
         parsed.hour != 0 ||
         parsed.minute != 0 ||
         parsed.second != 0;
@@ -376,6 +397,155 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     _load(resetPage: true);
   }
 
+  void _applyRequestingCompanyFilter([String? value]) {
+    setState(() {
+      _requestingCompanyFilter = (value ?? _requestingCompanyCtrl.text).trim();
+      _requestingCompanyCtrl.value = TextEditingValue(
+        text: _requestingCompanyFilter,
+        selection: TextSelection.collapsed(
+          offset: _requestingCompanyFilter.length,
+        ),
+      );
+    });
+    _load(resetPage: true);
+  }
+
+  Future<void> _loadRequestingCompanySuggestions() async {
+    await _searchRequestingCompanies('');
+  }
+
+  void _scheduleRequestingCompanySearch(
+    String query, {
+    bool immediate = false,
+  }) {
+    _requestingCompanySearchDebounce?.cancel();
+    final normalized = query.trim();
+    if (!immediate && normalized == _lastRequestingCompanySearchQuery) {
+      return;
+    }
+
+    final void Function() runSearch = () {
+      _searchRequestingCompanies(normalized);
+    };
+
+    if (immediate) {
+      runSearch();
+      return;
+    }
+
+    _requestingCompanySearchDebounce = Timer(
+      const Duration(milliseconds: 250),
+      runSearch,
+    );
+  }
+
+  Future<void> _searchRequestingCompanies(String query) async {
+    final normalized = query.trim();
+    final int requestId = ++_requestingCompanySearchRequestId;
+    _lastRequestingCompanySearchQuery = normalized;
+
+    if (mounted) {
+      setState(() {
+        _requestingCompanySearchLoading = true;
+      });
+    }
+
+    try {
+      final results = await ClientService.getClientSummaries(
+        query: normalized.isEmpty ? null : normalized,
+        limit: normalized.isEmpty ? 20 : 100,
+      );
+      if (!mounted || requestId != _requestingCompanySearchRequestId) return;
+      setState(() {
+        _requestingCompanySuggestions = results;
+        _requestingCompanySearchLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _requestingCompanySearchRequestId) return;
+      setState(() {
+        _requestingCompanySearchLoading = false;
+      });
+    }
+  }
+
+  List<_AutocompleteEntry<String>> _buildRequestingCompanyEntries() {
+    final normalizedFilter = _requestingCompanyFilter.trim().toLowerCase();
+    final entries =
+        _requestingCompanySuggestions
+            .where((client) => client.name.trim().isNotEmpty)
+            .map(
+              (client) => _AutocompleteEntry<String>(
+                value: client.name,
+                label: client.name,
+              ),
+            )
+            .toList()
+          ..sort(
+            (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+          );
+    if (normalizedFilter.isNotEmpty &&
+        !entries.any(
+          (entry) => entry.label.toLowerCase() == normalizedFilter,
+        )) {
+      entries.insert(
+        0,
+        _AutocompleteEntry<String>(
+          value: _requestingCompanyFilter,
+          label: _requestingCompanyFilter,
+        ),
+      );
+    }
+    return entries;
+  }
+
+  Widget _buildRequestingCompanyOptionsView({
+    required Iterable<_AutocompleteEntry<String>> options,
+    required double dropdownWidth,
+    required AutocompleteOnSelected<_AutocompleteEntry<String>> onSelected,
+  }) {
+    final opts = options.toList();
+    if (opts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Material(
+        elevation: 4,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: 240,
+            minWidth: dropdownWidth,
+            maxWidth: dropdownWidth,
+          ),
+          child: ListView.builder(
+            padding: EdgeInsets.zero,
+            itemCount: opts.length,
+            itemBuilder: (context, index) {
+              final option = opts[index];
+              return ListTile(
+                title: Text(option.label),
+                onTap: () => onSelected(option),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _clearRequestingCompanyFilter() {
+    if (_requestingCompanyFilter.isEmpty &&
+        _requestingCompanyCtrl.text.isEmpty) {
+      return;
+    }
+    setState(() {
+      _requestingCompanyFilter = '';
+      _requestingCompanyCtrl.clear();
+    });
+    _load(resetPage: true);
+  }
+
   void _clearDateFilter() {
     setState(() {
       _dateFilter = 'Tous';
@@ -390,10 +560,12 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       _statusFilter = 'Tous';
       _workflowFilter = 'Tous';
       _missionTypeFilter = 'Tous';
+      _requestingCompanyFilter = '';
       _dateFilter = 'Tous';
       _dateStart = null;
       _dateEnd = null;
       _searchCtrl.clear();
+      _requestingCompanyCtrl.clear();
     });
     _load(resetPage: true);
   }
@@ -426,6 +598,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
         page: _page,
         pageSize: _pageSize,
         q: query.isEmpty ? null : query,
+        requestingCompany: _requestingCompanyFilter.isEmpty
+            ? null
+            : _requestingCompanyFilter,
         dateStart: range.start != null
             ? _dateApiFormat.format(range.start!)
             : null,
@@ -474,6 +649,15 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
         );
       });
     }
+    if (_requestingCompanyFilter.isNotEmpty) {
+      final companyFilter = _requestingCompanyFilter.toLowerCase();
+      data = data.where((mission) {
+        final clientName = (mission['client_name'] ?? '')
+            .toString()
+            .toLowerCase();
+        return clientName.contains(companyFilter);
+      });
+    }
     return data.toList(growable: false);
   }
 
@@ -502,6 +686,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     final range = _resolvedDateRange();
     final rows = await MissionService.getMissionsDatatableAll(
       q: query.isEmpty ? null : query,
+      requestingCompany: _requestingCompanyFilter.isEmpty
+          ? null
+          : _requestingCompanyFilter,
       dateStart: range.start != null
           ? _dateApiFormat.format(range.start!)
           : null,
@@ -1294,6 +1481,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     final buffer = StringBuffer(
       'Chargées: $loaded, Après filtres: $filtered • Statut facture: $_statusFilter • Statut mission: ${_labelForStatus(_workflowFilter)} • Type: ${_labelForMissionTypeFilter(_missionTypeFilter)} • Date: $dateLabel',
     );
+    if (_requestingCompanyFilter.isNotEmpty) {
+      buffer.write(' • Société: $_requestingCompanyFilter');
+    }
     if (query.isNotEmpty) {
       buffer.write(' • Recherche: $query');
     }
@@ -1378,7 +1568,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     label: 'Type de mission',
                     value: _missionTypeFilter,
                     options: _missionTypeFilterOptions,
-                    displayLabel: (option) => _labelForMissionTypeFilter(option),
+                    displayLabel: (option) =>
+                        _labelForMissionTypeFilter(option),
                     onChanged: _applyMissionTypeFilter,
                   ),
                 ),
@@ -1390,6 +1581,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   }
 
   Widget _buildSearchPanel({bool compact = false}) {
+    final requestingCompanyEntries = _buildRequestingCompanyEntries();
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1425,6 +1618,97 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
             ),
             onSubmitted: (_) => _load(resetPage: true),
           ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final double dropdownWidth = constraints.maxWidth;
+              return Autocomplete<_AutocompleteEntry<String>>(
+                initialValue: _requestingCompanyCtrl.value,
+                displayStringForOption: (option) => option.label,
+                optionsBuilder: (textEditingValue) {
+                  final query = textEditingValue.text.trim().toLowerCase();
+                  if (query.isEmpty) return requestingCompanyEntries;
+                  return requestingCompanyEntries.where(
+                    (option) => option.label.toLowerCase().contains(query),
+                  );
+                },
+                onSelected: (option) {
+                  _applyRequestingCompanyFilter(option.label);
+                },
+                fieldViewBuilder:
+                    (
+                      context,
+                      textEditingController,
+                      focusNode,
+                      onFieldSubmitted,
+                    ) {
+                      if (!_requestingCompanyFieldListenerAttached) {
+                        textEditingController.value =
+                            _requestingCompanyCtrl.value;
+                        textEditingController.addListener(() {
+                          if (_requestingCompanyCtrl.value !=
+                              textEditingController.value) {
+                            setState(() {
+                              _requestingCompanyCtrl.value =
+                                  textEditingController.value;
+                            });
+                            _scheduleRequestingCompanySearch(
+                              textEditingController.text,
+                            );
+                          }
+                        });
+                        _requestingCompanyFieldListenerAttached = true;
+                      }
+                      return TextField(
+                        controller: textEditingController,
+                        focusNode: focusNode,
+                        decoration: InputDecoration(
+                          hintText: compact
+                              ? 'Société demandeuse'
+                              : 'Filtrer par société demandeuse',
+                          prefixIcon: const Icon(Icons.business_outlined),
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_requestingCompanyCtrl.text.trim().isNotEmpty)
+                                IconButton(
+                                  onPressed: _clearRequestingCompanyFilter,
+                                  icon: const Icon(Icons.close),
+                                  tooltip: 'Effacer le filtre société',
+                                ),
+                              IconButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _applyRequestingCompanyFilter(
+                                        textEditingController.text,
+                                      ),
+                                icon: const Icon(Icons.arrow_forward),
+                                tooltip: 'Filtrer par société',
+                              ),
+                            ],
+                          ),
+                        ),
+                        onSubmitted: (_) => _applyRequestingCompanyFilter(
+                          textEditingController.text,
+                        ),
+                      );
+                    },
+                optionsViewBuilder: (context, onSelected, options) =>
+                    _buildRequestingCompanyOptionsView(
+                      options: options,
+                      dropdownWidth: dropdownWidth,
+                      onSelected: onSelected,
+                    ),
+              );
+            },
+          ),
+          if (_requestingCompanySearchLoading)
+            const Padding(
+              padding: EdgeInsets.only(top: 8.0),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
         ],
       ),
     );
@@ -1677,11 +1961,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   }
 
   DataCell _statusCell(String statusCode) {
-    const Map<String, double> widths = {
-      'statut': 220,
-    };
-    final displayStatus =
-        statusCode.trim().isEmpty ? '—' : _labelForStatus(statusCode);
+    const Map<String, double> widths = {'statut': 220};
+    final displayStatus = statusCode.trim().isEmpty
+        ? '—'
+        : _labelForStatus(statusCode);
     final isCancelled = statusCode.trim() == '9';
     return DataCell(
       SizedBox(
@@ -1694,10 +1977,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
             Text(displayStatus, overflow: TextOverflow.ellipsis),
             if (isCancelled)
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF1F2),
                   borderRadius: BorderRadius.circular(999),
@@ -1766,7 +2046,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                 columns: [
                   DataColumn(
                     label: Tooltip(
-                      message: 'Sélectionner toutes les missions visibles et facturables',
+                      message:
+                          'Sélectionner toutes les missions visibles et facturables',
                       child: Checkbox(
                         tristate: true,
                         value: headerValue,
@@ -2008,10 +2289,11 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   final rowId =
                       int.tryParse((m['rowid'] ?? '0').toString()) ?? 0;
                   final isBillable = _isMissionEligibleForBilling(m);
-                  final selected = isBillable &&
-                    (_selectAllAcrossFilters
-                      ? !_deselectedRowIds.contains(rowId)
-                    : _selectedRowIds.contains(rowId));
+                  final selected =
+                      isBillable &&
+                      (_selectAllAcrossFilters
+                          ? !_deselectedRowIds.contains(rowId)
+                          : _selectedRowIds.contains(rowId));
                   final ref = (m['reference_devis'] ?? '').toString();
                   final libelle = (m['label'] ?? '').toString();
                   final langue = (m['produit_ref'] ?? '').toString();
@@ -2047,23 +2329,25 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     DataCell(
                       Checkbox(
                         value: selected,
-                        onChanged: isBillable ? (v) {
-                          setState(() {
-                            if (_selectAllAcrossFilters) {
-                              if ((v ?? false)) {
-                                _deselectedRowIds.remove(rowId);
-                              } else {
-                                _deselectedRowIds.add(rowId);
+                        onChanged: isBillable
+                            ? (v) {
+                                setState(() {
+                                  if (_selectAllAcrossFilters) {
+                                    if ((v ?? false)) {
+                                      _deselectedRowIds.remove(rowId);
+                                    } else {
+                                      _deselectedRowIds.add(rowId);
+                                    }
+                                  } else {
+                                    if ((v ?? false)) {
+                                      _selectedRowIds.add(rowId);
+                                    } else {
+                                      _selectedRowIds.remove(rowId);
+                                    }
+                                  }
+                                });
                               }
-                            } else {
-                              if ((v ?? false)) {
-                                _selectedRowIds.add(rowId);
-                              } else {
-                                _selectedRowIds.remove(rowId);
-                              }
-                            }
-                          });
-                        } : null,
+                            : null,
                       ),
                     ),
                   ];
@@ -2137,14 +2421,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     );
                   }
                   if (_visibleColumns['datecrea'] ?? true) {
-                    cells.add(
-                      _cell(dateCrea, keyWidth: 'datecrea'),
-                    );
+                    cells.add(_cell(dateCrea, keyWidth: 'datecrea'));
                   }
                   if (_visibleColumns['dateModif'] ?? false) {
-                    cells.add(
-                      _cell(dateModif, keyWidth: 'dateModif'),
-                    );
+                    cells.add(_cell(dateModif, keyWidth: 'dateModif'));
                   }
                   if (_visibleColumns['modifiePar'] ?? false) {
                     cells.add(
@@ -2248,23 +2528,25 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   }
                   return DataRow(
                     selected: selected,
-                    onSelectChanged: isBillable ? (v) {
-                      setState(() {
-                        if (_selectAllAcrossFilters) {
-                          if ((v ?? false)) {
-                            _deselectedRowIds.remove(rowId);
-                          } else {
-                            _deselectedRowIds.add(rowId);
+                    onSelectChanged: isBillable
+                        ? (v) {
+                            setState(() {
+                              if (_selectAllAcrossFilters) {
+                                if ((v ?? false)) {
+                                  _deselectedRowIds.remove(rowId);
+                                } else {
+                                  _deselectedRowIds.add(rowId);
+                                }
+                              } else {
+                                if ((v ?? false)) {
+                                  _selectedRowIds.add(rowId);
+                                } else {
+                                  _selectedRowIds.remove(rowId);
+                                }
+                              }
+                            });
                           }
-                        } else {
-                          if ((v ?? false)) {
-                            _selectedRowIds.add(rowId);
-                          } else {
-                            _selectedRowIds.remove(rowId);
-                          }
-                        }
-                      });
-                    } : null,
+                        : null,
                     cells: cells,
                   );
                 }).toList(),
@@ -2401,10 +2683,30 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   String _initialClientName = '';
   String _initialContactName = '';
   String _initialInterpreterName = '';
+  Timer? _clientSearchDebounce;
+  Timer? _contactSearchDebounce;
+  Timer? _interpreterSearchDebounce;
+  Timer? _languageSearchDebounce;
+  int _clientSearchRequestId = 0;
+  int _contactSearchRequestId = 0;
+  int _interpreterSearchRequestId = 0;
+  int _languageSearchRequestId = 0;
+  bool _clientSearchLoading = false;
+  bool _interpreterSearchLoading = false;
+  bool _languageSearchLoading = false;
+  String _lastClientSearchQuery = '';
+  String _lastContactSearchQuery = '';
+  String _lastInterpreterSearchQuery = '';
+  String _lastLanguageSearchQuery = '';
+  List<_AutocompleteEntry<String>> _languageSearchEntries =
+      <_AutocompleteEntry<String>>[];
 
-  bool _clientFieldListenerAttached = false;
-  bool _contactFieldListenerAttached = false;
-  bool _interpreterFieldListenerAttached = false;
+  TextEditingController? _clientFieldController;
+  TextEditingController? _contactFieldController;
+  TextEditingController? _interpreterFieldController;
+  VoidCallback? _clientFieldListener;
+  VoidCallback? _contactFieldListener;
+  VoidCallback? _interpreterFieldListener;
   bool _langueFieldListenerAttached = false;
   bool _statusFieldListenerAttached = false;
 
@@ -2417,6 +2719,20 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
 
   @override
   void dispose() {
+    _clientSearchDebounce?.cancel();
+    _contactSearchDebounce?.cancel();
+    _interpreterSearchDebounce?.cancel();
+    _languageSearchDebounce?.cancel();
+    if (_clientFieldController != null && _clientFieldListener != null) {
+      _clientFieldController!.removeListener(_clientFieldListener!);
+    }
+    if (_contactFieldController != null && _contactFieldListener != null) {
+      _contactFieldController!.removeListener(_contactFieldListener!);
+    }
+    if (_interpreterFieldController != null &&
+        _interpreterFieldListener != null) {
+      _interpreterFieldController!.removeListener(_interpreterFieldListener!);
+    }
     _langueCtrl.dispose();
     _dateCtrl.dispose();
     _heureCtrl.dispose();
@@ -2557,8 +2873,8 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   Future<void> _loadLookups() async {
     try {
       final results = await Future.wait([
-        MissionService.getInterpretes(),
-        ClientService.getClientSummaries(limit: 500),
+        MissionService.getInterpretes(limit: 100),
+        ClientService.getClientSummaries(limit: 100),
       ]);
       if (!mounted) return;
       setState(() {
@@ -2577,14 +2893,397 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     }
   }
 
+  void _clearContactSelection({
+    bool clearText = false,
+    bool clearOptions = false,
+  }) {
+    _selectedContactId = null;
+    if (clearOptions) {
+      _contactOptions = <ContactInfo>[];
+    }
+    if (clearText) {
+      _contactCtrl.clear();
+    }
+    _lastContactSearchQuery = '';
+  }
+
+  void _clearClientSelection({bool clearText = false}) {
+    _selectedClientId = null;
+    _clearContactSelection(clearText: true, clearOptions: true);
+    if (clearText) {
+      _clientCtrl.clear();
+    }
+    _lastClientSearchQuery = '';
+  }
+
+  void _clearInterpreterSelection({bool clearText = false}) {
+    _selectedInterpreterId = null;
+    if (clearText) {
+      _interpreterCtrl.clear();
+    }
+    _lastInterpreterSearchQuery = '';
+  }
+
+  void _clearLanguageSelection({
+    bool clearText = false,
+    bool clearSuggestions = false,
+  }) {
+    _selectedLanguageRef = null;
+    if (clearText) {
+      _langueCtrl.clear();
+    }
+    if (clearSuggestions) {
+      _languageSearchEntries = <_AutocompleteEntry<String>>[];
+    }
+    _lastLanguageSearchQuery = '';
+  }
+
+  void _bindClientFieldController(TextEditingController controller) {
+    if (identical(_clientFieldController, controller)) return;
+    if (_clientFieldController != null && _clientFieldListener != null) {
+      _clientFieldController!.removeListener(_clientFieldListener!);
+    }
+    _clientFieldController = controller;
+    controller.value = _clientCtrl.value;
+    _clientFieldListener = () {
+      if (_clientCtrl.value == controller.value) return;
+      setState(() {
+        _clientCtrl.value = controller.value;
+        _clearClientSelection();
+      });
+      _scheduleClientSearch(controller.text);
+    };
+    controller.addListener(_clientFieldListener!);
+  }
+
+  void _bindContactFieldController(TextEditingController controller) {
+    if (identical(_contactFieldController, controller)) return;
+    if (_contactFieldController != null && _contactFieldListener != null) {
+      _contactFieldController!.removeListener(_contactFieldListener!);
+    }
+    _contactFieldController = controller;
+    controller.value = _contactCtrl.value;
+    _contactFieldListener = () {
+      if (_contactCtrl.value == controller.value) return;
+      setState(() {
+        _contactCtrl.value = controller.value;
+        _clearContactSelection();
+      });
+      _scheduleContactSearch(controller.text);
+    };
+    controller.addListener(_contactFieldListener!);
+  }
+
+  void _bindInterpreterFieldController(TextEditingController controller) {
+    if (identical(_interpreterFieldController, controller)) return;
+    if (_interpreterFieldController != null &&
+        _interpreterFieldListener != null) {
+      _interpreterFieldController!.removeListener(_interpreterFieldListener!);
+    }
+    _interpreterFieldController = controller;
+    controller.value = _interpreterCtrl.value;
+    _interpreterFieldListener = () {
+      if (_interpreterCtrl.value == controller.value) return;
+      setState(() {
+        _interpreterCtrl.value = controller.value;
+        _clearInterpreterSelection();
+      });
+      _scheduleInterpreterSearch(controller.text);
+    };
+    controller.addListener(_interpreterFieldListener!);
+  }
+
+  void _resetAutocompleteSearchState() {
+    _clientSearchDebounce?.cancel();
+    _contactSearchDebounce?.cancel();
+    _interpreterSearchDebounce?.cancel();
+    _languageSearchDebounce?.cancel();
+    _clientSearchRequestId++;
+    _contactSearchRequestId++;
+    _interpreterSearchRequestId++;
+    _languageSearchRequestId++;
+    _clientSearchLoading = false;
+    _contactsLoading = false;
+    _interpreterSearchLoading = false;
+    _languageSearchLoading = false;
+    _lastClientSearchQuery = '';
+    _lastContactSearchQuery = '';
+    _lastInterpreterSearchQuery = '';
+    _lastLanguageSearchQuery = '';
+    _languageSearchEntries = <_AutocompleteEntry<String>>[];
+  }
+
+  void _restoreDefaultLookupSuggestions() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scheduleClientSearch('', immediate: true);
+      _scheduleInterpreterSearch('', immediate: true);
+    });
+  }
+
+  Widget _buildAutocompleteOptionsView<T>({
+    required Iterable<_AutocompleteEntry<T>> options,
+    required double dropdownWidth,
+    required AutocompleteOnSelected<_AutocompleteEntry<T>> onSelected,
+    String? Function(_AutocompleteEntry<T> option)? subtitleBuilder,
+  }) {
+    final opts = options.toList();
+    if (opts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Material(
+        elevation: 4,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: 240,
+            minWidth: dropdownWidth,
+            maxWidth: dropdownWidth,
+          ),
+          child: ListView.builder(
+            padding: EdgeInsets.zero,
+            itemCount: opts.length,
+            itemBuilder: (context, index) {
+              final option = opts[index];
+              final subtitle = subtitleBuilder?.call(option);
+              return ListTile(
+                title: Text(option.label),
+                subtitle: subtitle == null ? null : Text(subtitle),
+                onTap: () => onSelected(option),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _scheduleClientSearch(String query, {bool immediate = false}) {
+    _clientSearchDebounce?.cancel();
+    final normalized = query.trim();
+    if (!immediate && normalized == _lastClientSearchQuery) {
+      return;
+    }
+
+    final void Function() runSearch = () {
+      _searchClients(normalized);
+    };
+
+    if (immediate) {
+      runSearch();
+      return;
+    }
+
+    _clientSearchDebounce = Timer(const Duration(milliseconds: 250), runSearch);
+  }
+
+  Future<void> _searchClients(String query) async {
+    final normalized = query.trim();
+    final int requestId = ++_clientSearchRequestId;
+    _lastClientSearchQuery = normalized;
+
+    if (mounted) {
+      setState(() {
+        _clientSearchLoading = true;
+      });
+    }
+
+    try {
+      final results = await ClientService.getClientSummaries(
+        query: normalized.isEmpty ? null : normalized,
+        limit: normalized.isEmpty ? 100 : 50,
+      );
+      if (!mounted || requestId != _clientSearchRequestId) return;
+      setState(() {
+        _clientSummaries = results;
+        _clientSearchLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _clientSearchRequestId) return;
+      setState(() {
+        _clientSearchLoading = false;
+      });
+    }
+  }
+
+  void _scheduleContactSearch(String query, {bool immediate = false}) {
+    _contactSearchDebounce?.cancel();
+    final normalized = query.trim();
+    if (!immediate && normalized == _lastContactSearchQuery) {
+      return;
+    }
+
+    final void Function() runSearch = () {
+      _searchContacts(normalized);
+    };
+
+    if (immediate) {
+      runSearch();
+      return;
+    }
+
+    _contactSearchDebounce = Timer(
+      const Duration(milliseconds: 250),
+      runSearch,
+    );
+  }
+
+  Future<void> _searchContacts(String query) async {
+    final clientId = _selectedClientId;
+    if (clientId == null || clientId <= 0) return;
+
+    final normalized = query.trim();
+    final int requestId = ++_contactSearchRequestId;
+    _lastContactSearchQuery = normalized;
+
+    if (mounted) {
+      setState(() {
+        _contactsLoading = true;
+      });
+    }
+
+    try {
+      final fetched = await ContactService.getContactsForClient(
+        clientId: clientId,
+        query: normalized.isEmpty ? null : normalized,
+        limit: normalized.isEmpty ? 100 : 50,
+      );
+      if (!mounted || requestId != _contactSearchRequestId) return;
+      setState(() {
+        if (normalized.isEmpty) {
+          _contactsCache[clientId] = fetched;
+        }
+        _contactOptions = fetched;
+        _contactsLoading = false;
+      });
+      _syncContactController();
+    } catch (_) {
+      if (!mounted || requestId != _contactSearchRequestId) return;
+      setState(() {
+        _contactsLoading = false;
+      });
+    }
+  }
+
+  void _scheduleInterpreterSearch(String query, {bool immediate = false}) {
+    _interpreterSearchDebounce?.cancel();
+    final normalized = query.trim();
+    if (!immediate && normalized == _lastInterpreterSearchQuery) {
+      return;
+    }
+
+    final void Function() runSearch = () {
+      _searchInterpreters(normalized);
+    };
+
+    if (immediate) {
+      runSearch();
+      return;
+    }
+
+    _interpreterSearchDebounce = Timer(
+      const Duration(milliseconds: 250),
+      runSearch,
+    );
+  }
+
+  Future<void> _searchInterpreters(String query) async {
+    final normalized = query.trim();
+    final int requestId = ++_interpreterSearchRequestId;
+    _lastInterpreterSearchQuery = normalized;
+
+    if (mounted) {
+      setState(() {
+        _interpreterSearchLoading = true;
+      });
+    }
+
+    try {
+      final results = await MissionService.getInterpretes(
+        query: normalized.isEmpty ? null : normalized,
+        limit: normalized.isEmpty ? 100 : 50,
+      );
+      if (!mounted || requestId != _interpreterSearchRequestId) return;
+      setState(() {
+        _interpretes = results;
+        _interpreterSearchLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _interpreterSearchRequestId) return;
+      setState(() {
+        _interpreterSearchLoading = false;
+      });
+    }
+  }
+
+  void _scheduleLanguageSearch(String query, {bool immediate = false}) {
+    _languageSearchDebounce?.cancel();
+    final normalized = query.trim();
+    if (!immediate && normalized == _lastLanguageSearchQuery) {
+      return;
+    }
+
+    final void Function() runSearch = () {
+      _searchLanguages(normalized);
+    };
+
+    if (immediate) {
+      runSearch();
+      return;
+    }
+
+    _languageSearchDebounce = Timer(
+      const Duration(milliseconds: 250),
+      runSearch,
+    );
+  }
+
+  Future<void> _searchLanguages(String query) async {
+    final normalized = query.trim();
+    final int requestId = ++_languageSearchRequestId;
+    _lastLanguageSearchQuery = normalized;
+
+    if (mounted) {
+      setState(() {
+        _languageSearchLoading = true;
+      });
+    }
+
+    try {
+      final results = await LanguageService.getLanguages(
+        query: normalized.isEmpty ? null : normalized,
+        limit: normalized.isEmpty ? 100 : 50,
+      );
+      if (!mounted || requestId != _languageSearchRequestId) return;
+      setState(() {
+        _languageSearchEntries = results
+            .map(
+              (option) => _AutocompleteEntry<String>(
+                value: option.ref.trim().isEmpty
+                    ? option.displayName
+                    : option.ref.trim(),
+                label: option.displayName,
+              ),
+            )
+            .toList();
+        _languageSearchLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _languageSearchRequestId) return;
+      setState(() {
+        _languageSearchLoading = false;
+      });
+    }
+  }
+
   Future<void> _loadContactsForClient(int? clientId) async {
     if (clientId == null || clientId <= 0) {
       setState(() {
-        _contactOptions = <ContactInfo>[];
-        _selectedContactId = null;
+        _clearContactSelection(clearText: true, clearOptions: true);
         _contactsLoading = false;
       });
-      _contactCtrl.text = '';
       return;
     }
     if (_contactsCache.containsKey(clientId)) {
@@ -2636,6 +3335,67 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
       _selectedContactId = null;
       _contactCtrl.text = '';
     }
+  }
+
+  ContactInfo? _findContactMatchByDisplayName(
+    Iterable<ContactInfo> contacts,
+    String rawValue,
+  ) {
+    final normalized = rawValue
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .toLowerCase();
+    if (normalized.isEmpty) return null;
+    for (final contact in contacts) {
+      final displayName = contact.displayName
+          .trim()
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .toLowerCase();
+      if (displayName == normalized) {
+        return contact;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _resolveContactSelectionFromInput() async {
+    if ((_selectedContactId ?? 0) > 0) return;
+    final clientId = _selectedClientId;
+    final rawValue = _contactCtrl.text.trim();
+    if (clientId == null || clientId <= 0 || rawValue.isEmpty) return;
+
+    ContactInfo? match = _findContactMatchByDisplayName(
+      _contactOptions,
+      rawValue,
+    );
+    if (match == null && _contactsCache.containsKey(clientId)) {
+      match = _findContactMatchByDisplayName(
+        _contactsCache[clientId]!,
+        rawValue,
+      );
+    }
+    if (match == null) {
+      final fetched = await ContactService.getContactsForClient(
+        clientId: clientId,
+        limit: 500,
+      );
+      if (!mounted) return;
+      match = _findContactMatchByDisplayName(fetched, rawValue);
+      setState(() {
+        _contactsCache[clientId] = fetched;
+        _contactOptions = fetched;
+      });
+    }
+
+    if (match == null || !mounted) return;
+    setState(() {
+      _selectedContactId = match!.id;
+      _contactCtrl.value = TextEditingValue(
+        text: match.displayName,
+        selection: TextSelection.collapsed(offset: match.displayName.length),
+      );
+      _validationMessage = null;
+    });
   }
 
   List<_AutocompleteEntry<int>> _buildClientEntries() {
@@ -2723,6 +3483,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   }
 
   List<_AutocompleteEntry<String>> _buildLanguageEntries() {
+    if (_languageSearchEntries.isNotEmpty) {
+      return _languageSearchEntries;
+    }
     if (widget.languageEntries.isNotEmpty) {
       return widget.languageEntries;
     }
@@ -2744,11 +3507,14 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   }
 
   bool get _isEditingExistingMission =>
-      (_missionId ?? 0) > 0 && (!widget.isCreation || _showCreatedSummary == false);
+      (_missionId ?? 0) > 0 &&
+      (!widget.isCreation || _showCreatedSummary == false);
 
   Map<String, dynamic> _buildMissionSnapshot(MissionApiResult result) {
     final dynamic rawId = result.data?['id'];
-    final int? createdId = rawId == null ? null : int.tryParse(rawId.toString());
+    final int? createdId = rawId == null
+        ? null
+        : int.tryParse(rawId.toString());
     final String ref = (result.data?['ref'] ?? '').toString().trim();
     return <String, dynamic>{
       'rowid': createdId ?? _missionId,
@@ -2804,10 +3570,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
           const SizedBox(height: 4),
           Text(
             displayValue,
-            style: const TextStyle(
-              fontSize: 15,
-              color: Color(0xFF111827),
-            ),
+            style: const TextStyle(fontSize: 15, color: Color(0xFF111827)),
           ),
         ],
       ),
@@ -3015,6 +3778,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   }
 
   Future<void> _handleSubmit() async {
+    await _resolveContactSelectionFromInput();
     final validationMessage = _validateMissionForm();
     if (validationMessage != null) {
       setState(() {
@@ -3183,32 +3947,28 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   }
 
   void _resetForm() {
-    _langueCtrl.clear();
     _dateCtrl.clear();
     _heureCtrl.clear();
     _dureeCtrl.clear();
     _labelCtrl.clear();
     _commentaireCtrl.clear();
-    _clientCtrl.clear();
-    _contactCtrl.clear();
-    _interpreterCtrl.clear();
+    _clearClientSelection(clearText: true);
+    _clearInterpreterSelection(clearText: true);
+    _clearLanguageSelection(clearText: true, clearSuggestions: true);
     _statusCtrl.text = widget.labelForStatus(
       _statusCodes.isEmpty ? '1' : _statusCodes.first,
     );
-    _selectedInterpreterId = null;
-    _selectedClientId = null;
-    _selectedContactId = null;
-    _selectedLanguageRef = null;
     _selectedMissionDate = null;
     _selectedMissionTime = null;
     _selectedStatusCode = _statusCodes.isEmpty ? '1' : _statusCodes.first;
-    _contactOptions = <ContactInfo>[];
     _contactsCache.clear();
+    _resetAutocompleteSearchState();
     _validationMessage = null;
     _successMessage = null;
     _selectedMissionTypes = widget.missionTypeChoices.contains('Interprétariat')
         ? {'Interprétariat'}
         : <String>{};
+    _restoreDefaultLookupSuggestions();
   }
 
   Widget _buildSectionTitle(String text) {
@@ -3229,7 +3989,10 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
       child: SingleChildScrollView(
         controller: _formScrollCtrl,
         padding: const EdgeInsets.all(24),
-        child: _showCreatedSummary && widget.embedded && _createdMissionSnapshot != null
+        child:
+            _showCreatedSummary &&
+                widget.embedded &&
+                _createdMissionSnapshot != null
             ? _buildCreatedMissionSummary()
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3240,328 +4003,142 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                       child: LinearProgressIndicator(minHeight: 2),
                     ),
                   Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildSectionTitle('Type de mission'),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: widget.missionTypeChoices.map((choice) {
-                          final bool selected = _selectedMissionTypes.contains(
-                            choice,
-                          );
-                          return FilterChip(
-                            label: Text(choice),
-                            selected: selected,
-                            onSelected: (value) {
-                              setState(() {
-                                if (value) {
-                                  _selectedMissionTypes.add(choice);
-                                } else {
-                                  _selectedMissionTypes.remove(choice);
-                                }
-                              });
-                            },
-                          );
-                        }).toList(),
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionTitle('Type de mission'),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: widget.missionTypeChoices.map((choice) {
+                                final bool selected = _selectedMissionTypes
+                                    .contains(choice);
+                                return FilterChip(
+                                  label: Text(choice),
+                                  selected: selected,
+                                  onSelected: (value) {
+                                    setState(() {
+                                      if (value) {
+                                        _selectedMissionTypes.add(choice);
+                                      } else {
+                                        _selectedMissionTypes.remove(choice);
+                                      }
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextField(
+                          controller: _labelCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Libellé',
+                            isDense: true,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _labelCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Libellé',
-                      isDense: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _buildSectionTitle('Planification'),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _dateCtrl,
-                    readOnly: true,
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final initialDate = _selectedMissionDate ?? now;
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: initialDate,
-                        firstDate: DateTime(now.year - 5),
-                        lastDate: DateTime(now.year + 5),
-                      );
-                      if (!mounted || picked == null) return;
-                      setState(() {
-                        _selectedMissionDate = picked;
-                        _dateCtrl.text = widget.dateDisplayFormat.format(
-                          picked,
-                        );
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'Date de la mission * (JJ/MM/AAAA)',
-                      isDense: true,
-                      suffixIcon: Icon(Icons.calendar_today),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _heureCtrl,
-                    readOnly: true,
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: _selectedMissionTime ?? TimeOfDay.now(),
-                        builder: (context, child) => MediaQuery(
-                          data: MediaQuery.of(
-                            context,
-                          ).copyWith(alwaysUse24HourFormat: true),
-                          child: child!,
-                        ),
-                      );
-                      if (!mounted || picked == null) return;
-                      setState(() {
-                        _selectedMissionTime = picked;
-                        _heureCtrl.text = widget.formatTimeOfDay(picked);
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'Heure de début (HH:MM)',
-                      isDense: true,
-                      suffixIcon: Icon(Icons.schedule),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _dureeCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Durée (minutes)',
-                      hintText: 'Ex: 3h, 2h30, 2:30 ou 150',
-                      isDense: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _buildSectionTitle('Informations demandeur'),
-            const SizedBox(height: 8),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final double dropdownWidth = constraints.maxWidth;
-                return Autocomplete<_AutocompleteEntry<int>>(
-                  initialValue: _clientCtrl.value,
-                  displayStringForOption: (option) => option.label,
-                  optionsBuilder: (textEditingValue) {
-                    final query = textEditingValue.text.trim().toLowerCase();
-                    if (query.isEmpty) return clientEntries;
-                    return clientEntries.where(
-                      (option) =>
-                          option.label.toLowerCase().contains(query) ||
-                          option.value.toString().contains(query),
-                    );
-                  },
-                  onSelected: (option) {
-                    setState(() {
-                      _selectedClientId = option.value;
-                      _clientCtrl.value = TextEditingValue(text: option.label);
-                      _selectedContactId = null;
-                      _contactCtrl.text = '';
-                      _contactOptions = <ContactInfo>[];
-                    });
-                    _loadContactsForClient(option.value);
-                  },
-                  fieldViewBuilder:
-                      (
-                        context,
-                        textEditingController,
-                        focusNode,
-                        onFieldSubmitted,
-                      ) {
-                        if (!_clientFieldListenerAttached) {
-                          textEditingController.value = _clientCtrl.value;
-                          textEditingController.addListener(() {
-                            if (_clientCtrl.value !=
-                                textEditingController.value) {
-                              setState(() {
-                                _clientCtrl.value = textEditingController.value;
-                                _selectedClientId = null;
-                                _selectedContactId = null;
-                                _contactOptions = <ContactInfo>[];
-                                _contactCtrl.text = '';
-                              });
-                            }
-                          });
-                          _clientFieldListenerAttached = true;
-                        }
-                        return TextField(
-                          controller: textEditingController,
-                          focusNode: focusNode,
-                          decoration: const InputDecoration(
-                            labelText: 'Société demandeuse *',
-                            isDense: true,
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                        );
-                      },
-                  optionsViewBuilder: (context, onSelected, options) {
-                    final opts = options.toList();
-                    if (opts.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Align(
-                      alignment: Alignment.topLeft,
-                      child: Material(
-                        elevation: 4,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: 240,
-                            minWidth: dropdownWidth,
-                            maxWidth: dropdownWidth,
-                          ),
-                          child: ListView.builder(
-                            padding: EdgeInsets.zero,
-                            itemCount: opts.length,
-                            itemBuilder: (context, index) {
-                              final option = opts[index];
-                              return ListTile(
-                                title: Text(option.label),
-                                onTap: () => onSelected(option),
+                  const SizedBox(height: 20),
+                  _buildSectionTitle('Planification'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _dateCtrl,
+                          readOnly: true,
+                          onTap: () async {
+                            final now = DateTime.now();
+                            final initialDate = _selectedMissionDate ?? now;
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: initialDate,
+                              firstDate: DateTime(now.year - 5),
+                              lastDate: DateTime(now.year + 5),
+                            );
+                            if (!mounted || picked == null) return;
+                            setState(() {
+                              _selectedMissionDate = picked;
+                              _dateCtrl.text = widget.dateDisplayFormat.format(
+                                picked,
                               );
-                            },
+                            });
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Date de la mission * (JJ/MM/AAAA)',
+                            isDense: true,
+                            suffixIcon: Icon(Icons.calendar_today),
                           ),
                         ),
                       ),
-                    );
-                  },
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final double dropdownWidth = constraints.maxWidth;
-                return Autocomplete<_AutocompleteEntry<int>>(
-                  initialValue: _contactCtrl.value,
-                  displayStringForOption: (option) => option.label,
-                  optionsBuilder: (textEditingValue) {
-                    final query = textEditingValue.text.trim().toLowerCase();
-                    if (query.isEmpty) return contactEntries;
-                    return contactEntries.where(
-                      (option) => option.label.toLowerCase().contains(query),
-                    );
-                  },
-                  onSelected: (option) {
-                    setState(() {
-                      _selectedContactId = option.value;
-                      _contactCtrl.value = TextEditingValue(text: option.label);
-                    });
-                  },
-                  fieldViewBuilder:
-                      (
-                        context,
-                        textEditingController,
-                        focusNode,
-                        onFieldSubmitted,
-                      ) {
-                        if (!_contactFieldListenerAttached) {
-                          textEditingController.value = _contactCtrl.value;
-                          textEditingController.addListener(() {
-                            if (_contactCtrl.value !=
-                                textEditingController.value) {
-                              setState(() {
-                                _contactCtrl.value =
-                                    textEditingController.value;
-                                _selectedContactId = null;
-                              });
-                            }
-                          });
-                          _contactFieldListenerAttached = true;
-                        }
-                        return TextField(
-                          controller: textEditingController,
-                          focusNode: focusNode,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _heureCtrl,
+                          readOnly: true,
+                          onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime:
+                                  _selectedMissionTime ?? TimeOfDay.now(),
+                              builder: (context, child) => MediaQuery(
+                                data: MediaQuery.of(
+                                  context,
+                                ).copyWith(alwaysUse24HourFormat: true),
+                                child: child!,
+                              ),
+                            );
+                            if (!mounted || picked == null) return;
+                            setState(() {
+                              _selectedMissionTime = picked;
+                              _heureCtrl.text = widget.formatTimeOfDay(picked);
+                            });
+                          },
                           decoration: const InputDecoration(
-                            labelText: 'Personne demandeuse *',
+                            labelText: 'Heure de début (HH:MM)',
                             isDense: true,
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                        );
-                      },
-                  optionsViewBuilder: (context, onSelected, options) {
-                    final opts = options.toList();
-                    if (opts.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Align(
-                      alignment: Alignment.topLeft,
-                      child: Material(
-                        elevation: 4,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: 240,
-                            minWidth: dropdownWidth,
-                            maxWidth: dropdownWidth,
-                          ),
-                          child: ListView.builder(
-                            padding: EdgeInsets.zero,
-                            itemCount: opts.length,
-                            itemBuilder: (context, index) {
-                              final option = opts[index];
-                              return ListTile(
-                                title: Text(option.label),
-                                onTap: () => onSelected(option),
-                              );
-                            },
+                            suffixIcon: Icon(Icons.schedule),
                           ),
                         ),
                       ),
-                    );
-                  },
-                );
-              },
-            ),
-            if (_contactsLoading)
-              const Padding(
-                padding: EdgeInsets.only(top: 8.0),
-                child: LinearProgressIndicator(minHeight: 2),
-              ),
-            const SizedBox(height: 20),
-            _buildSectionTitle('Mission'),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: LayoutBuilder(
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _dureeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Durée (minutes)',
+                            hintText: 'Ex: 3h, 2h30, 2:30 ou 150',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _buildSectionTitle('Informations demandeur'),
+                  const SizedBox(height: 8),
+                  LayoutBuilder(
                     builder: (context, constraints) {
                       final double dropdownWidth = constraints.maxWidth;
                       return Autocomplete<_AutocompleteEntry<int>>(
-                        initialValue: _interpreterCtrl.value,
+                        initialValue: _clientCtrl.value,
                         displayStringForOption: (option) => option.label,
                         optionsBuilder: (textEditingValue) {
                           final query = textEditingValue.text
                               .trim()
                               .toLowerCase();
-                          if (query.isEmpty) return interpreterEntries;
-                          return interpreterEntries.where(
+                          if (query.isEmpty) return clientEntries;
+                          return clientEntries.where(
                             (option) =>
                                 option.label.toLowerCase().contains(query) ||
                                 option.value.toString().contains(query),
@@ -3569,11 +4146,72 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         },
                         onSelected: (option) {
                           setState(() {
-                            _selectedInterpreterId = option.value;
-                            _interpreterCtrl.value = TextEditingValue(
+                            _selectedClientId = option.value;
+                            _clientCtrl.value = TextEditingValue(
                               text: option.label,
                             );
-                            _validationMessage = null;
+                            _clearContactSelection(
+                              clearText: true,
+                              clearOptions: true,
+                            );
+                          });
+                          _loadContactsForClient(option.value);
+                        },
+                        fieldViewBuilder:
+                            (
+                              context,
+                              textEditingController,
+                              focusNode,
+                              onFieldSubmitted,
+                            ) {
+                              _bindClientFieldController(textEditingController);
+                              return TextField(
+                                controller: textEditingController,
+                                focusNode: focusNode,
+                                decoration: const InputDecoration(
+                                  labelText: 'Société demandeuse *',
+                                  isDense: true,
+                                  suffixIcon: Icon(Icons.arrow_drop_down),
+                                ),
+                              );
+                            },
+                        optionsViewBuilder: (context, onSelected, options) =>
+                            _buildAutocompleteOptionsView<int>(
+                              options: options,
+                              dropdownWidth: dropdownWidth,
+                              onSelected: onSelected,
+                            ),
+                      );
+                    },
+                  ),
+                  if (_clientSearchLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  const SizedBox(height: 8),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final double dropdownWidth = constraints.maxWidth;
+                      return Autocomplete<_AutocompleteEntry<int>>(
+                        initialValue: _contactCtrl.value,
+                        displayStringForOption: (option) => option.label,
+                        optionsBuilder: (textEditingValue) {
+                          final query = textEditingValue.text
+                              .trim()
+                              .toLowerCase();
+                          if (query.isEmpty) return contactEntries;
+                          return contactEntries.where(
+                            (option) =>
+                                option.label.toLowerCase().contains(query),
+                          );
+                        },
+                        onSelected: (option) {
+                          setState(() {
+                            _selectedContactId = option.value;
+                            _contactCtrl.value = TextEditingValue(
+                              text: option.label,
+                            );
                           });
                         },
                         fieldViewBuilder:
@@ -3583,94 +4221,228 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                               focusNode,
                               onFieldSubmitted,
                             ) {
-                              if (!_interpreterFieldListenerAttached) {
-                                textEditingController.value =
-                                    _interpreterCtrl.value;
-                                textEditingController.addListener(() {
-                                  if (_interpreterCtrl.value !=
-                                      textEditingController.value) {
-                                    setState(() {
-                                      _interpreterCtrl.value =
-                                          textEditingController.value;
-                                      _selectedInterpreterId = null;
-                                    });
-                                  }
-                                });
-                                _interpreterFieldListenerAttached = true;
-                              }
+                              _bindContactFieldController(
+                                textEditingController,
+                              );
                               return TextField(
                                 controller: textEditingController,
                                 focusNode: focusNode,
                                 decoration: const InputDecoration(
-                                  labelText: 'Interprète *',
+                                  labelText: 'Personne demandeuse *',
                                   isDense: true,
                                   suffixIcon: Icon(Icons.arrow_drop_down),
                                 ),
                               );
                             },
-                        optionsViewBuilder: (context, onSelected, options) {
-                          final opts = options.toList();
-                          if (opts.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-                          return Align(
-                            alignment: Alignment.topLeft,
-                            child: Material(
-                              elevation: 4,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: 240,
-                                  minWidth: dropdownWidth,
-                                  maxWidth: dropdownWidth,
-                                ),
-                                child: ListView.builder(
-                                  padding: EdgeInsets.zero,
-                                  itemCount: opts.length,
-                                  itemBuilder: (context, index) {
-                                    final option = opts[index];
-                                    return ListTile(
-                                      title: Text(option.label),
-                                      onTap: () => onSelected(option),
-                                    );
-                                  },
-                                ),
-                              ),
+                        optionsViewBuilder: (context, onSelected, options) =>
+                            _buildAutocompleteOptionsView<int>(
+                              options: options,
+                              dropdownWidth: dropdownWidth,
+                              onSelected: onSelected,
                             ),
-                          );
-                        },
                       );
                     },
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: LayoutBuilder(
+                  if (_contactsLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  const SizedBox(height: 20),
+                  _buildSectionTitle('Mission'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final double dropdownWidth = constraints.maxWidth;
+                            return Autocomplete<_AutocompleteEntry<int>>(
+                              initialValue: _interpreterCtrl.value,
+                              displayStringForOption: (option) => option.label,
+                              optionsBuilder: (textEditingValue) {
+                                final query = textEditingValue.text
+                                    .trim()
+                                    .toLowerCase();
+                                if (query.isEmpty) return interpreterEntries;
+                                return interpreterEntries.where(
+                                  (option) =>
+                                      option.label.toLowerCase().contains(
+                                        query,
+                                      ) ||
+                                      option.value.toString().contains(query),
+                                );
+                              },
+                              onSelected: (option) {
+                                setState(() {
+                                  _selectedInterpreterId = option.value;
+                                  _interpreterCtrl.value = TextEditingValue(
+                                    text: option.label,
+                                  );
+                                  _validationMessage = null;
+                                });
+                              },
+                              fieldViewBuilder:
+                                  (
+                                    context,
+                                    textEditingController,
+                                    focusNode,
+                                    onFieldSubmitted,
+                                  ) {
+                                    _bindInterpreterFieldController(
+                                      textEditingController,
+                                    );
+                                    return TextField(
+                                      controller: textEditingController,
+                                      focusNode: focusNode,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Interprète *',
+                                        isDense: true,
+                                        suffixIcon: Icon(Icons.arrow_drop_down),
+                                      ),
+                                    );
+                                  },
+                              optionsViewBuilder:
+                                  (context, onSelected, options) =>
+                                      _buildAutocompleteOptionsView<int>(
+                                        options: options,
+                                        dropdownWidth: dropdownWidth,
+                                        onSelected: onSelected,
+                                      ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final double dropdownWidth = constraints.maxWidth;
+                            return Autocomplete<_AutocompleteEntry<String>>(
+                              initialValue: _langueCtrl.value,
+                              displayStringForOption: (option) => option.label,
+                              optionsBuilder: (textEditingValue) {
+                                final query = textEditingValue.text
+                                    .trim()
+                                    .toLowerCase();
+                                if (languageEntries.isEmpty) {
+                                  return const Iterable<
+                                    _AutocompleteEntry<String>
+                                  >.empty();
+                                }
+                                if (query.isEmpty) {
+                                  return languageEntries;
+                                }
+                                return languageEntries.where((option) {
+                                  return option.label.toLowerCase().contains(
+                                        query,
+                                      ) ||
+                                      option.value.toLowerCase().contains(
+                                        query,
+                                      );
+                                });
+                              },
+                              onSelected: (option) {
+                                setState(() {
+                                  _selectedLanguageRef = option.value.trim();
+                                  _langueCtrl.text = option.label;
+                                });
+                              },
+                              fieldViewBuilder:
+                                  (
+                                    context,
+                                    textEditingController,
+                                    focusNode,
+                                    onFieldSubmitted,
+                                  ) {
+                                    if (!_langueFieldListenerAttached) {
+                                      textEditingController.value =
+                                          _langueCtrl.value;
+                                      textEditingController.addListener(() {
+                                        if (_langueCtrl.value !=
+                                            textEditingController.value) {
+                                          setState(() {
+                                            _langueCtrl.value =
+                                                textEditingController.value;
+                                            _clearLanguageSelection();
+                                          });
+                                          _scheduleLanguageSearch(
+                                            textEditingController.text,
+                                          );
+                                        }
+                                      });
+                                      _langueFieldListenerAttached = true;
+                                    }
+                                    return TextField(
+                                      controller: textEditingController,
+                                      focusNode: focusNode,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Langue * (ref produit)',
+                                        isDense: true,
+                                        suffixIcon: Icon(Icons.arrow_drop_down),
+                                      ),
+                                    );
+                                  },
+                              optionsViewBuilder:
+                                  (context, onSelected, options) =>
+                                      _buildAutocompleteOptionsView<String>(
+                                        options: options,
+                                        dropdownWidth: dropdownWidth,
+                                        onSelected: onSelected,
+                                        subtitleBuilder: (option) =>
+                                            option.value != option.label
+                                            ? option.value
+                                            : null,
+                                      ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_interpreterSearchLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  if (_languageSearchLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _commentaireCtrl,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Commentaires',
+                      alignLabelWithHint: true,
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  LayoutBuilder(
                     builder: (context, constraints) {
                       final double dropdownWidth = constraints.maxWidth;
                       return Autocomplete<_AutocompleteEntry<String>>(
-                        initialValue: _langueCtrl.value,
+                        initialValue: _statusCtrl.value,
                         displayStringForOption: (option) => option.label,
                         optionsBuilder: (textEditingValue) {
                           final query = textEditingValue.text
                               .trim()
                               .toLowerCase();
-                          if (languageEntries.isEmpty) {
-                            return const Iterable<
-                              _AutocompleteEntry<String>
-                            >.empty();
-                          }
-                          if (query.isEmpty) {
-                            return languageEntries;
-                          }
-                          return languageEntries.where((option) {
+                          if (query.isEmpty) return statusEntries;
+                          return statusEntries.where((option) {
                             return option.label.toLowerCase().contains(query) ||
                                 option.value.toLowerCase().contains(query);
                           });
                         },
                         onSelected: (option) {
                           setState(() {
-                            _selectedLanguageRef = option.value.trim();
-                            _langueCtrl.text = option.label;
+                            _selectedStatusCode = option.value;
+                            _statusCtrl.value = TextEditingValue(
+                              text: option.label,
+                            );
                           });
                         },
                         fieldViewBuilder:
@@ -3680,163 +4452,39 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                               focusNode,
                               onFieldSubmitted,
                             ) {
-                              if (!_langueFieldListenerAttached) {
-                                textEditingController.value = _langueCtrl.value;
+                              if (!_statusFieldListenerAttached) {
+                                textEditingController.value = _statusCtrl.value;
                                 textEditingController.addListener(() {
-                                  if (_langueCtrl.value !=
+                                  if (_statusCtrl.value !=
                                       textEditingController.value) {
                                     setState(() {
-                                      _langueCtrl.value =
+                                      _statusCtrl.value =
                                           textEditingController.value;
-                                      _selectedLanguageRef = null;
+                                      _selectedStatusCode = '';
                                     });
                                   }
                                 });
-                                _langueFieldListenerAttached = true;
+                                _statusFieldListenerAttached = true;
                               }
                               return TextField(
                                 controller: textEditingController,
                                 focusNode: focusNode,
                                 decoration: const InputDecoration(
-                                  labelText: 'Langue * (ref produit)',
+                                  labelText: 'Statut mission',
                                   isDense: true,
                                   suffixIcon: Icon(Icons.arrow_drop_down),
                                 ),
                               );
                             },
-                        optionsViewBuilder: (context, onSelected, options) {
-                          final opts = options.toList();
-                          if (opts.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-                          return Align(
-                            alignment: Alignment.topLeft,
-                            child: Material(
-                              elevation: 4,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: 240,
-                                  minWidth: dropdownWidth,
-                                  maxWidth: dropdownWidth,
-                                ),
-                                child: ListView.builder(
-                                  padding: EdgeInsets.zero,
-                                  itemCount: opts.length,
-                                  itemBuilder: (context, index) {
-                                    final option = opts[index];
-                                    return ListTile(
-                                      title: Text(option.label),
-                                      subtitle: option.value != option.label
-                                          ? Text(option.value)
-                                          : null,
-                                      onTap: () => onSelected(option),
-                                    );
-                                  },
-                                ),
-                              ),
+                        optionsViewBuilder: (context, onSelected, options) =>
+                            _buildAutocompleteOptionsView<String>(
+                              options: options,
+                              dropdownWidth: dropdownWidth,
+                              onSelected: onSelected,
                             ),
-                          );
-                        },
                       );
                     },
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _commentaireCtrl,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Commentaires',
-                alignLabelWithHint: true,
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final double dropdownWidth = constraints.maxWidth;
-                return Autocomplete<_AutocompleteEntry<String>>(
-                  initialValue: _statusCtrl.value,
-                  displayStringForOption: (option) => option.label,
-                  optionsBuilder: (textEditingValue) {
-                    final query = textEditingValue.text.trim().toLowerCase();
-                    if (query.isEmpty) return statusEntries;
-                    return statusEntries.where((option) {
-                      return option.label.toLowerCase().contains(query) ||
-                          option.value.toLowerCase().contains(query);
-                    });
-                  },
-                  onSelected: (option) {
-                    setState(() {
-                      _selectedStatusCode = option.value;
-                      _statusCtrl.value = TextEditingValue(text: option.label);
-                    });
-                  },
-                  fieldViewBuilder:
-                      (
-                        context,
-                        textEditingController,
-                        focusNode,
-                        onFieldSubmitted,
-                      ) {
-                        if (!_statusFieldListenerAttached) {
-                          textEditingController.value = _statusCtrl.value;
-                          textEditingController.addListener(() {
-                            if (_statusCtrl.value !=
-                                textEditingController.value) {
-                              setState(() {
-                                _statusCtrl.value = textEditingController.value;
-                                _selectedStatusCode = '';
-                              });
-                            }
-                          });
-                          _statusFieldListenerAttached = true;
-                        }
-                        return TextField(
-                          controller: textEditingController,
-                          focusNode: focusNode,
-                          decoration: const InputDecoration(
-                            labelText: 'Statut mission',
-                            isDense: true,
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                        );
-                      },
-                  optionsViewBuilder: (context, onSelected, options) {
-                    final opts = options.toList();
-                    if (opts.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Align(
-                      alignment: Alignment.topLeft,
-                      child: Material(
-                        elevation: 4,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: 240,
-                            minWidth: dropdownWidth,
-                            maxWidth: dropdownWidth,
-                          ),
-                          child: ListView.builder(
-                            padding: EdgeInsets.zero,
-                            itemCount: opts.length,
-                            itemBuilder: (context, index) {
-                              final option = opts[index];
-                              return ListTile(
-                                title: Text(option.label),
-                                onTap: () => onSelected(option),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
                   if (_validationMessage != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -3861,9 +4509,15 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
-                            : Text(_isEditingExistingMission ? 'Enregistrer' : 'Créer'),
+                            : Text(
+                                _isEditingExistingMission
+                                    ? 'Enregistrer'
+                                    : 'Créer',
+                              ),
                       ),
                     ],
                   ),

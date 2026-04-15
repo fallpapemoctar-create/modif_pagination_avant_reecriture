@@ -10,8 +10,10 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/auth_manager.dart';
+import '../core/app_config.dart';
 import '../core/brand_footer.dart';
 import '../core/models/invoice_line.dart';
 import '../core/responsive_helper.dart';
@@ -41,102 +43,6 @@ import '../widgets/client_autocomplete_field.dart';
 			),
 		];
 
-		final detailActions = <Widget>[
-			if (isLocked)
-				Container(
-					width: double.infinity,
-					margin: const EdgeInsets.only(bottom: 12),
-					padding: const EdgeInsets.all(10),
-					decoration: BoxDecoration(
-						color: const Color(0xFFFEF3C7),
-						borderRadius: BorderRadius.circular(8),
-						border: Border.all(color: const Color(0xFFF59E0B)),
-					),
-					child: const Text('Facture payée : les lignes du détail sont verrouillées.'),
-				),
-			if (!isLocked && missionRef != null && missionRef.trim().isNotEmpty)
-				Padding(
-					padding: const EdgeInsets.only(bottom: 12),
-					child: Row(
-						children: [
-							OutlinedButton.icon(
-								onPressed: _selectedInvoiceLineEditors.isEmpty ? null : _resetSelectedInvoiceLines,
-								icon: const Icon(Icons.restore),
-								label: const Text('Réinitialiser'),
-							),
-							const SizedBox(width: 12),
-							Expanded(
-								child: FilledButton.icon(
-									onPressed: _savingInvoiceLinesPanel || !_hasSelectedInvoiceLineChanges ? null : _saveSelectedInvoiceLines,
-									icon: _savingInvoiceLinesPanel
-										? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-										: const Icon(Icons.save_outlined),
-									label: Text(_savingInvoiceLinesPanel ? 'Enregistrement...' : 'Enregistrer les lignes'),
-								),
-							),
-						],
-					),
-				),
-		];
-
-		final linesContent = _loadingInvoiceLinesPanel
-			? const Center(child: CircularProgressIndicator())
-			: missionRef == null || missionRef.trim().isEmpty
-				? const Center(child: Text('Aucune référence mission disponible pour cette facture.'))
-				: lines.isEmpty
-					? const Center(child: Text('Aucune ligne trouvée pour cette mission.'))
-					: Scrollbar(
-						thumbVisibility: true,
-						child: ListView.separated(
-							itemCount: lines.length,
-							separatorBuilder: (_, __) => const Divider(height: 20),
-							itemBuilder: (context, index) => _buildStoredInvoiceLineTile(index, isLocked: isLocked),
-						),
-					);
-
-		return Align(
-			alignment: Alignment.centerRight,
-			child: ConstrainedBox(
-				constraints: const BoxConstraints(maxWidth: 470),
-				child: Material(
-					elevation: 8,
-					borderRadius: const BorderRadius.only(topLeft: Radius.circular(18), bottomLeft: Radius.circular(18)),
-					child: Container(
-						color: Colors.white,
-						child: Column(
-							crossAxisAlignment: CrossAxisAlignment.start,
-							children: [
-								Container(
-									padding: EdgeInsets.fromLTRB(spacing, spacing, spacing, spacing - 2),
-									decoration: const BoxDecoration(
-										color: Color(0xFFF4F6FB),
-										borderRadius: BorderRadius.only(topLeft: Radius.circular(18)),
-										border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
-									),
-									child: Column(
-										crossAxisAlignment: CrossAxisAlignment.start,
-										children: [
-											Row(
-												children: [
-													Container(
-														padding: const EdgeInsets.all(10),
-														decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-														child: const Icon(Icons.account_tree_outlined, color: Color(0xFF000091)),
-													),
-													const SizedBox(width: 12),
-													Expanded(
-														child: Column(
-															crossAxisAlignment: CrossAxisAlignment.start,
-															children: [
-																Text('Niveau 2 • Détail facture', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: const Color(0xFF000091), fontWeight: FontWeight.w700)),
-																const SizedBox(height: 4),
-																Text('Facture ${invoice.invoiceNumber}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-																const SizedBox(height: 2),
-																Text(invoice.clientName.isEmpty ? 'Client non renseigné' : invoice.clientName, style: const TextStyle(color: Color(0xFF6B7280))),
-															],
-														),
-													),
-													IconButton(onPressed: _closeInvoiceDetails, icon: const Icon(Icons.close)),
 												],
 											),
 											const SizedBox(height: 12),
@@ -403,6 +309,102 @@ class _BillingPageState extends State<BillingPage> {
     'cancelled': 'Annulée',
   };
 
+  Widget _buildSectionPageTitle(String title) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        border: Border(
+          top: BorderSide(color: Color(0xFFE2E8F0)),
+          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+        ),
+      ),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF000091),
+          height: 1.1,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreationView(double spacing) {
+    return Container(
+      color: const Color(0xFFF6F6F6),
+      child: ResponsiveContainer(
+        maxWidth: double.infinity,
+        padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionPageTitle('Création des factures'),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(spacing, spacing, spacing, spacing),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildClientSection(),
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: _loadingMissions
+                          ? const Center(child: CircularProgressIndicator())
+                          : _lineEditors.isEmpty
+                              ? _buildEmptyState()
+                              : Stack(
+                                  children: [
+                                    _buildInvoiceCard(spacing),
+                                    if (_savingDraft)
+                                      const Positioned(
+                                        right: 16,
+                                        top: 16,
+                                        child: _SavingDraftBadge(),
+                                      ),
+                                  ],
+                                ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvoicesView(double spacing) {
+    return Container(
+      color: const Color(0xFFF6F6F6),
+      child: ResponsiveContainer(
+        padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionPageTitle('Tableau des factures'),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.all(spacing),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildInvoiceFilters(),
+                    const SizedBox(height: 16),
+                    Expanded(child: _buildInvoiceTable()),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -464,51 +466,66 @@ class _BillingPageState extends State<BillingPage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-      child: compact
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  summary,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Total: ${_formatCurrency(totalDisplayed)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                controls,
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(
-                  child: Text(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: compact
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
                     summary,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF64748B),
                     ),
                   ),
-                ),
-                Text(
-                  'Total: ${_formatCurrency(totalDisplayed)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF334155),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Total: ${_formatCurrency(totalDisplayed)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                controls,
-              ],
-            ),
+                  const SizedBox(height: 10),
+                  controls,
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      summary,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Total: ${_formatCurrency(totalDisplayed)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF334155),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  controls,
+                ],
+              ),
+      ),
     );
   }
 
@@ -647,7 +664,7 @@ class _BillingPageState extends State<BillingPage> {
     const collapsedWidth = 68.0;
     const expandedWidth = 240.0;
     final collapsed = _sidebarCollapsed;
-    final horizontalPadding = collapsed ? 8.0 : 16.0;
+    final horizontalPadding = collapsed ? 8.0 : 12.0;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeInOut,
@@ -659,32 +676,38 @@ class _BillingPageState extends State<BillingPage> {
       child: Column(
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(horizontalPadding, 16, 8, 16),
+            padding: EdgeInsets.fromLTRB(horizontalPadding, 14, 8, 14),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (!collapsed)
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'Facturation',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Navigation générale',
-                          style: TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: collapsed ? 0 : 12),
+                    child: !collapsed
+                        ? const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Facturation',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Navigation générale',
+                                style: TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
                   ),
+                ),
                 IconButton(
                   icon: Icon(
                     collapsed ? Icons.chevron_right : Icons.chevron_left,
@@ -814,67 +837,6 @@ class _BillingPageState extends State<BillingPage> {
         !_loadingInvoices) {
       unawaited(_loadInvoices(reset: true));
     }
-  }
-
-  Widget _buildCreationView(double spacing) {
-    return Container(
-      color: const Color(0xFFF6F6F6),
-      child: ResponsiveContainer(
-        maxWidth: double.infinity,
-        padding: EdgeInsets.zero,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(spacing, 0, spacing, spacing),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildClientSection(),
-              const SizedBox(height: 4),
-              Expanded(
-                child: _loadingMissions
-                    ? const Center(child: CircularProgressIndicator())
-                    : _lineEditors.isEmpty
-                    ? _buildEmptyState()
-                    : Stack(
-                        children: [
-                          _buildInvoiceCard(spacing),
-                          if (_savingDraft)
-                            const Positioned(
-                              right: 16,
-                              top: 16,
-                              child: _SavingDraftBadge(),
-                            ),
-                        ],
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInvoicesView(double spacing) {
-    return Container(
-      color: const Color(0xFFF6F6F6),
-      child: ResponsiveContainer(
-        padding: EdgeInsets.all(spacing),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Tableau des factures',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            _buildInvoiceFilters(),
-            const SizedBox(height: 16),
-            Expanded(child: _buildInvoiceTable()),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildClientSection() {
@@ -1356,21 +1318,24 @@ class _BillingPageState extends State<BillingPage> {
                 const Icon(Icons.table_rows, color: Color(0xFF000091)),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Tableau des lignes',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _lineEditors.isEmpty
-                            ? 'Aucune ligne sélectionnée'
-                            : '${_lineEditors.length} ligne(s) prêtes',
-                        style: const TextStyle(color: Color(0xFF6B7280)),
-                      ),
-                    ],
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(
+                          text: 'Tableau des lignes',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        TextSpan(
+                          text: _lineEditors.isEmpty
+                              ? ' • aucune ligne sélectionnée'
+                              : ' • ${_lineEditors.length} ligne(s) prête(s)',
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 IconButton(
@@ -1576,132 +1541,300 @@ class _BillingPageState extends State<BillingPage> {
   Widget _buildInvoiceFilters() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 900;
-        return Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: Color(0xFFE5E7EB)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: isCompact
-                      ? constraints.maxWidth
-                      : math.min(360, constraints.maxWidth),
-                  child: TextFormField(
-                    controller: _invoiceSearchController,
-                    decoration: InputDecoration(
-                      hintText: 'Rechercher...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _invoiceSearchQuery.trim().isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _invoiceSearchController.clear();
-                                setState(() => _invoiceSearchQuery = '');
-                              },
-                              icon: const Icon(Icons.close),
-                              tooltip: 'Effacer',
-                            ),
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        final isCompact = constraints.maxWidth < 1200;
+        final refreshButton = FilledButton.icon(
+          onPressed: _loadingInvoices ? null : () => _loadInvoices(reset: true),
+          icon: _loadingInvoices
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.sync),
+          label: Text(_loadingInvoices ? 'Actualisation...' : 'Mettre à jour'),
+        );
+
+        final filterFields = [
+          _buildToolbarField(
+            label: 'Recherche rapide',
+            width: isCompact ? null : 320,
+            child: TextFormField(
+              controller: _invoiceSearchController,
+              decoration: InputDecoration(
+                hintText: 'Rechercher une facture, un client ou un mois...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _invoiceSearchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _invoiceSearchController.clear();
+                          setState(() => _invoiceSearchQuery = '');
+                        },
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Effacer',
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                      ),
-                    ),
-                    onChanged: (value) =>
-                        setState(() => _invoiceSearchQuery = value),
-                  ),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                 ),
-                SizedBox(
-                  width: isCompact ? constraints.maxWidth : 230,
-                  child: _buildInvoiceFilterDropdown(
-                    value: _invoiceMonthFilter,
-                    items: _invoiceMonthOptions,
-                    icon: Icons.calendar_month_outlined,
-                    onChanged: (value) => setState(
-                      () => _invoiceMonthFilter = value ?? 'Tous les mois',
-                    ),
-                  ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                 ),
-                SizedBox(
-                  width: isCompact ? constraints.maxWidth : 230,
-                  child: _buildInvoiceFilterDropdown(
-                    value: _invoiceStatusFilter,
-                    items: _invoiceStatusOptions,
-                    icon: Icons.flag_outlined,
-                    onChanged: (value) {
-                      final next = value ?? 'Tous les statuts';
-                      setState(() => _invoiceStatusFilter = next);
-                      _loadInvoices(reset: true);
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: isCompact ? constraints.maxWidth : 250,
-                  child: _buildInvoiceFilterDropdown(
-                    value: _invoiceClientFilter,
-                    items: _invoiceClientOptions,
-                    icon: Icons.business_outlined,
-                    onChanged: (value) {
-                      final next = value ?? 'Tous les clients';
-                      setState(() => _invoiceClientFilter = next);
-                      _loadInvoices(reset: true);
-                    },
-                  ),
-                ),
-                if (!isCompact)
-                  FilledButton.icon(
-                    onPressed: _loadingInvoices
-                        ? null
-                        : () => _loadInvoices(reset: true),
-                    icon: _loadingInvoices
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.sync),
-                    label: const Text('Mettre à jour'),
-                  )
-                else
-                  SizedBox(
-                    width: constraints.maxWidth,
-                    child: FilledButton.icon(
-                      onPressed: _loadingInvoices
-                          ? null
-                          : () => _loadInvoices(reset: true),
-                      icon: _loadingInvoices
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.sync),
-                      label: const Text('Mettre à jour'),
-                    ),
-                  ),
-              ],
+              ),
+              onChanged: (value) => setState(() => _invoiceSearchQuery = value),
             ),
           ),
+          _buildToolbarField(
+            label: 'Période',
+            width: isCompact ? null : 205,
+            child: _buildInvoiceFilterDropdown(
+              value: _invoiceMonthFilter,
+              items: _invoiceMonthOptions,
+              icon: Icons.calendar_month_outlined,
+              onChanged: (value) =>
+                  setState(() => _invoiceMonthFilter = value ?? 'Tous les mois'),
+            ),
+          ),
+          _buildToolbarField(
+            label: 'Statut',
+            width: isCompact ? null : 205,
+            child: _buildInvoiceFilterDropdown(
+              value: _invoiceStatusFilter,
+              items: _invoiceStatusOptions,
+              icon: Icons.flag_outlined,
+              onChanged: (value) {
+                final next = value ?? 'Tous les statuts';
+                setState(() => _invoiceStatusFilter = next);
+                _loadInvoices(reset: true);
+              },
+            ),
+          ),
+          _buildToolbarField(
+            label: 'Client',
+            width: isCompact ? null : 220,
+            child: _buildInvoiceFilterDropdown(
+              value: _invoiceClientFilter,
+              items: _invoiceClientOptions,
+              icon: Icons.business_outlined,
+              onChanged: (value) {
+                final next = value ?? 'Tous les clients';
+                setState(() => _invoiceClientFilter = next);
+                _loadInvoices(reset: true);
+              },
+            ),
+          ),
+          _buildToolbarField(
+            label: 'Action',
+            width: isCompact ? null : 190,
+            child: SizedBox(
+              width: double.infinity,
+              child: refreshButton,
+            ),
+          ),
+        ];
+
+        if (!isCompact) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD7E0EA)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  flex: 30,
+                  child: _buildToolbarField(
+                    label: 'Recherche rapide',
+                    child: TextFormField(
+                      controller: _invoiceSearchController,
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher une facture, un client ou un mois...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _invoiceSearchQuery.trim().isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  _invoiceSearchController.clear();
+                                  setState(() => _invoiceSearchQuery = '');
+                                },
+                                icon: const Icon(Icons.close),
+                                tooltip: 'Effacer',
+                              ),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      onChanged: (value) =>
+                          setState(() => _invoiceSearchQuery = value),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 18,
+                  child: _buildToolbarField(
+                    label: 'Période',
+                    child: _buildInvoiceFilterDropdown(
+                      value: _invoiceMonthFilter,
+                      items: _invoiceMonthOptions,
+                      icon: Icons.calendar_month_outlined,
+                      onChanged: (value) => setState(
+                        () => _invoiceMonthFilter = value ?? 'Tous les mois',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 18,
+                  child: _buildToolbarField(
+                    label: 'Statut',
+                    child: _buildInvoiceFilterDropdown(
+                      value: _invoiceStatusFilter,
+                      items: _invoiceStatusOptions,
+                      icon: Icons.flag_outlined,
+                      onChanged: (value) {
+                        final next = value ?? 'Tous les statuts';
+                        setState(() => _invoiceStatusFilter = next);
+                        _loadInvoices(reset: true);
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 20,
+                  child: _buildToolbarField(
+                    label: 'Client',
+                    child: _buildInvoiceFilterDropdown(
+                      value: _invoiceClientFilter,
+                      items: _invoiceClientOptions,
+                      icon: Icons.business_outlined,
+                      onChanged: (value) {
+                        final next = value ?? 'Tous les clients';
+                        setState(() => _invoiceClientFilter = next);
+                        _loadInvoices(reset: true);
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 176,
+                  child: _buildToolbarField(
+                    label: 'Action',
+                    child: SizedBox(width: double.infinity, child: refreshButton),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return _buildInvoiceFilterFieldsBlock(
+          fields: filterFields,
+          compact: isCompact,
         );
       },
+    );
+  }
+
+  Widget _buildInvoiceFilterFieldsBlock({
+    required List<Widget> fields,
+    required bool compact,
+  }) {
+    final fieldsContent = compact
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var index = 0; index < fields.length; index++) ...[
+                fields[index],
+                if (index < fields.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          )
+        : Wrap(spacing: 16, runSpacing: 12, children: fields);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD7E0EA)),
+      ),
+      child: compact
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildInvoiceFilterFieldsIntro(),
+                const SizedBox(height: 14),
+                fieldsContent,
+              ],
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 240, child: _buildInvoiceFilterFieldsIntro()),
+                const SizedBox(width: 18),
+                Expanded(child: fieldsContent),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildInvoiceFilterFieldsIntro() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E3A8A),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.tune_rounded, color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Filtres de liste',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Affinent les résultats affichés',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1714,6 +1847,7 @@ class _BillingPageState extends State<BillingPage> {
     return DropdownButtonFormField<String>(
       // ignore: deprecated_member_use
       value: items.contains(value) ? value : items.first,
+      isExpanded: true,
       icon: const Icon(Icons.keyboard_arrow_down_rounded),
       decoration: InputDecoration(
         prefixIcon: Icon(icon),
@@ -1721,17 +1855,18 @@ class _BillingPageState extends State<BillingPage> {
         fillColor: const Color(0xFFF8FAFC),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
       ),
       items: items
-          .map(
-            (item) => DropdownMenuItem<String>(value: item, child: Text(item)),
-          )
+          .map((item) => DropdownMenuItem<String>(
+                value: item,
+                child: _buildDropdownOverflowLabel(item),
+              ))
           .toList(growable: false),
       onChanged: onChanged,
     );
@@ -1739,36 +1874,37 @@ class _BillingPageState extends State<BillingPage> {
 
   Widget _buildInvoiceTable() {
     if (_invoiceError != null) {
-      return Center(
-        child: Text(
-          _invoiceError!,
-          style: const TextStyle(color: Color(0xFFB91C1C)),
-        ),
+      return _buildInvoiceStateCard(
+        icon: Icons.error_outline,
+        title: 'Impossible de charger les factures',
+        subtitle: _invoiceError!,
+        foregroundColor: const Color(0xFFB91C1C),
       );
     }
     if (_loadingInvoices) {
-      return const Center(child: CircularProgressIndicator());
+      return _buildInvoiceLoadingStateCard();
     }
     if (_invoices.isEmpty) {
-      return const Center(
-        child: Text(
-          'Aucune facture trouvée. Modifiez les filtres pour relancer la recherche.',
-        ),
+      return _buildInvoiceStateCard(
+        icon: Icons.receipt_long_outlined,
+        title: 'Aucune facture trouvée',
+        subtitle: 'Modifiez les filtres pour relancer la recherche.',
       );
     }
     final invoices = _filteredInvoicesForDisplay;
     final totalPages = (_invoiceTotal / _invoicePageSize).ceil().clamp(1, 9999);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 920;
+        final isCompact = constraints.maxWidth < 1240;
         return Column(
           children: [
             Expanded(
               child: invoices.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Aucune facture ne correspond aux filtres sélectionnés.',
-                      ),
+                  ? _buildInvoiceStateCard(
+                      icon: Icons.filter_alt_off_outlined,
+                      title: 'Aucun résultat',
+                      subtitle:
+                          'Aucune facture ne correspond aux filtres sélectionnés.',
                     )
                   : isCompact
                   ? _buildCompactInvoiceList(invoices)
@@ -1793,8 +1929,10 @@ class _BillingPageState extends State<BillingPage> {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFFE5E7EB)),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
+      elevation: 0,
+      shadowColor: Colors.transparent,
       child: Column(
         children: [
           Container(
@@ -1953,6 +2091,12 @@ class _BillingPageState extends State<BillingPage> {
                                   tooltip: 'Voir',
                                   onPressed: () => _openInvoiceDetails(invoice),
                                 ),
+                                if (_hasStoredInvoicePdf(invoice))
+                                  _buildInvoiceActionButton(
+                                    icon: Icons.open_in_new_outlined,
+                                    tooltip: 'Ouvrir le PDF serveur',
+                                    onPressed: () => _openStoredInvoicePdf(invoice),
+                                  ),
                                 _buildInvoiceActionButton(
                                   icon: Icons.picture_as_pdf_outlined,
                                   tooltip: 'Générer le PDF',
@@ -2050,16 +2194,16 @@ class _BillingPageState extends State<BillingPage> {
         return Material(
           color: isSelected ? const Color(0xFFF5F7FF) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             side: BorderSide(
               color: isSelected
                   ? const Color(0xFF000091)
-                  : const Color(0xFFE5E7EB),
+                  : const Color(0xFFE2E8F0),
               width: isSelected ? 1.4 : 1,
             ),
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             onTap: () => _openInvoiceDetails(invoice),
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -2123,6 +2267,14 @@ class _BillingPageState extends State<BillingPage> {
                         tooltip: 'Voir',
                         onPressed: () => _openInvoiceDetails(invoice),
                       ),
+                      if (_hasStoredInvoicePdf(invoice)) ...[
+                        const SizedBox(width: 6),
+                        _buildInvoiceActionButton(
+                          icon: Icons.open_in_new_outlined,
+                          tooltip: 'Ouvrir le PDF serveur',
+                          onPressed: () => _openStoredInvoicePdf(invoice),
+                        ),
+                      ],
                       const SizedBox(width: 6),
                       _buildInvoiceActionButton(
                         icon: Icons.picture_as_pdf_outlined,
@@ -2148,6 +2300,93 @@ class _BillingPageState extends State<BillingPage> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildInvoiceStateCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    Color foregroundColor = const Color(0xFF334155),
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 38, color: foregroundColor),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  color: foregroundColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Color(0xFF64748B)),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvoiceLoadingStateCard() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 14),
+              Text(
+                'Chargement des factures...',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF334155),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -2289,6 +2528,35 @@ class _BillingPageState extends State<BillingPage> {
           side: const BorderSide(color: Color(0xFFE5E7EB)),
         ),
       ),
+    );
+  }
+
+  bool _hasStoredInvoicePdf(ClientInvoiceSummary invoice) {
+    final path = invoice.pdfPath?.trim() ?? '';
+    return path.isNotEmpty;
+  }
+
+  Uri? _storedInvoicePdfUri(String? relativePath) {
+    final trimmedPath = relativePath?.trim() ?? '';
+    if (trimmedPath.isEmpty) return null;
+    final baseUrl = AppConfig.instance.apiBaseUrl;
+    final appRoot = baseUrl.replaceFirst(RegExp(r'api/?$'), '');
+    return Uri.tryParse('$appRoot${trimmedPath.replaceFirst(RegExp(r'^/+'), '')}');
+  }
+
+  Future<void> _openStoredInvoicePdf(ClientInvoiceSummary invoice) async {
+    final uri = _storedInvoicePdfUri(invoice.pdfPath);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucun PDF serveur disponible.')),
+      );
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Impossible d’ouvrir le PDF: $uri')),
     );
   }
 
@@ -4299,6 +4567,20 @@ class _BillingPageState extends State<BillingPage> {
         year: now.year,
         month: now.month,
       );
+      await _ensurePdfAssets();
+      final pdfFile = await _buildInvoicePdfFile(
+        invoiceNumber: invoiceNumber,
+        billedAt: now,
+        clientName: _currentClientName.isEmpty
+            ? 'Client non renseigné'
+            : _currentClientName,
+        clientAddressLines: _clientAddressLinesForPdf(),
+        clientCode: _clientCodeForPdf(),
+        paymentTermLabel: _selectedClientPaymentTermLabel,
+        companyInfo: await _loadCompanyInfoForPdf(),
+        lines: lines,
+        filenameSeed: invoiceNumber,
+      );
       await BillingService.logClientBilling(
         clientName: _currentClientName,
         invoiceNumber: invoiceNumber,
@@ -4310,6 +4592,8 @@ class _BillingPageState extends State<BillingPage> {
         invoiceLines: lines,
         userId: AuthManager.userId,
         userName: AuthManager.userFullName,
+        pdfBytes: pdfFile.bytes,
+        pdfFilename: pdfFile.filename,
         periodMonth: _selectedMonth,
         draftKey: _draftKey,
         notes: _buildInvoiceCreationNotes(),
@@ -4403,6 +4687,38 @@ class _BillingPageState extends State<BillingPage> {
     required CompanyInfo companyInfo,
     required List<InvoiceLine> lines,
     required String filenameClientSeed,
+  }) async {
+    final pdfFile = await _buildInvoicePdfFile(
+      invoiceNumber: invoiceNumber,
+      billedAt: billedAt,
+      clientName: clientName,
+      clientAddressLines: clientAddressLines,
+      clientCode: clientCode,
+      paymentTermLabel: paymentTermLabel,
+      companyInfo: companyInfo,
+      lines: lines,
+      filenameSeed: filenameClientSeed,
+    );
+    if (canSavePdfToDownloads) {
+      await savePdfToDownloads(pdfFile.bytes, pdfFile.filename);
+    } else {
+      await Printing.layoutPdf(
+        name: pdfFile.filename,
+        onLayout: (_) async => pdfFile.bytes,
+      );
+    }
+  }
+
+  Future<({Uint8List bytes, String filename})> _buildInvoicePdfFile({
+    required String invoiceNumber,
+    required DateTime billedAt,
+    required String clientName,
+    required List<String> clientAddressLines,
+    required String clientCode,
+    required String? paymentTermLabel,
+    required CompanyInfo companyInfo,
+    required List<InvoiceLine> lines,
+    required String filenameSeed,
   }) async {
     final headers = ['Désignation', 'TVA', 'P.U. HT', 'Qté', 'Total HT'];
     final rows = lines
@@ -4663,15 +4979,17 @@ class _BillingPageState extends State<BillingPage> {
 
     final bytes = await doc.save();
     final timestamp = DateFormat('yyyyMMdd_HHmm').format(billedAt);
-    final sanitizedClient = filenameClientSeed.trim().isEmpty
+    final sanitizedInvoice = invoiceNumber.trim().isEmpty
+      ? 'sans_numero'
+      : invoiceNumber.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
+    final sanitizedCompany = filenameSeed.trim().isEmpty
+      ? clientName.trim().isEmpty
         ? 'client'
-        : filenameClientSeed.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
-    final filename = 'Facture_${sanitizedClient}_$timestamp.pdf';
-    if (canSavePdfToDownloads) {
-      await savePdfToDownloads(bytes, filename);
-    } else {
-      await Printing.layoutPdf(name: filename, onLayout: (_) async => bytes);
-    }
+        : clientName.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_')
+      : filenameSeed.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
+    final filename =
+      'Facture_${sanitizedInvoice}_${sanitizedCompany}_$timestamp.pdf';
+    return (bytes: bytes, filename: filename);
   }
 
   Future<void> _loadCreationInvoicesForClient({bool force = false}) async {
