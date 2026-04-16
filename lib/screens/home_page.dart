@@ -184,10 +184,7 @@ class HomePage extends StatelessWidget {
           ),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(1.0),
-            child: Container(
-              height: 1,
-              color: const Color(0xFFDDDDDD),
-            ),
+            child: Container(height: 1, color: const Color(0xFFDDDDDD)),
           ),
         ),
         body: TabBarView(children: views),
@@ -279,15 +276,12 @@ class HomePage extends StatelessWidget {
               color: const Color(0xFF000091),
               iconSize: 20,
               padding: const EdgeInsets.all(12),
-              constraints: const BoxConstraints(
-                minWidth: 44,
-                minHeight: 44,
-              ),
-                onPressed: () async {
-                  final navigator = Navigator.of(context);
-                  await AuthManager.logout();
-                  if (!navigator.mounted) return;
-                  navigator.pushReplacementNamed("/login");
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                await AuthManager.logout();
+                if (!navigator.mounted) return;
+                navigator.pushReplacementNamed("/login");
               },
               tooltip: 'Déconnexion',
             ),
@@ -295,10 +289,7 @@ class HomePage extends StatelessWidget {
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            color: const Color(0xFFDDDDDD),
-            height: 1.0,
-          ),
+          child: Container(color: const Color(0xFFDDDDDD), height: 1.0),
         ),
       ),
       body: ResponsiveContainer(
@@ -332,6 +323,14 @@ class HomePage extends StatelessWidget {
                 label: "Facturation",
                 color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/billing"),
+              ),
+            if (rights.canManageMissions() || rights.isAdmin())
+              _dashboardCard(
+                context: context,
+                icon: Icons.apartment,
+                label: "Demandeurs",
+                color: const Color(0xFF000091),
+                onTap: () => Navigator.pushNamed(context, "/requesters"),
               ),
             if (rights.isAdmin())
               _dashboardCard(
@@ -370,15 +369,12 @@ class HomePage extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     final iconSize = ResponsiveHelper.isMobile(context) ? 36.0 : 44.0;
-    
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(4),
-        side: const BorderSide(
-          color: Color(0xFFDDDDDD),
-          width: 1,
-        ),
+        side: const BorderSide(color: Color(0xFFDDDDDD), width: 1),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(4),

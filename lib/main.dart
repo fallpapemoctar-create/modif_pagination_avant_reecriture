@@ -10,8 +10,8 @@ import 'pages/interpreters_page.dart';
 import 'pages/billing_page.dart';
 import 'pages/missions_table_page.dart';
 import 'pages/company_info_page.dart';
+import 'pages/requesters_management_page.dart';
 import 'core/auth_manager.dart';
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,12 +62,18 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginPage(),
         '/admin-mockup': (context) => const AdminMockupPreview(),
-        '/interpreters': (context) => InterpretersPage(userRights: AuthManager.userRights),
-        '/missions-table': (context) => MissionsTablePage(userRights: AuthManager.userRights),
-        '/billing': (context) => BillingPage(userRights: AuthManager.userRights),
+        '/interpreters': (context) =>
+            InterpretersPage(userRights: AuthManager.userRights),
+        '/missions-table': (context) =>
+            MissionsTablePage(userRights: AuthManager.userRights),
+        '/billing': (context) =>
+            BillingPage(userRights: AuthManager.userRights),
         '/admin': (context) => AdminPage(userRights: AuthManager.userRights),
         '/export': (context) => const ExportPage(),
-        '/company-info': (context) => CompanyInfoPage(userRights: AuthManager.userRights),
+        '/company-info': (context) =>
+            CompanyInfoPage(userRights: AuthManager.userRights),
+        '/requesters': (context) =>
+            RequestersManagementPage(userRights: AuthManager.userRights),
       },
     );
   }
