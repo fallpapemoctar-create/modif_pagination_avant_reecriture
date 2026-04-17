@@ -89,7 +89,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       <_AutocompleteEntry<String>>[];
   _MissionWorkspaceView _activeView = _MissionWorkspaceView.table;
   bool _sidebarCollapsed = false;
-  bool _filtersCollapsed = false;
+  bool _filtersCollapsed = true;
   final Set<int> _selectedRowIds = <int>{};
   final Set<int> _deselectedRowIds = <int>{};
   bool _selectAllAcrossFilters = false;

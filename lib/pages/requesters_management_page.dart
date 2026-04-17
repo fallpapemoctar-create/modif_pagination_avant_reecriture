@@ -1115,6 +1115,32 @@ class _RequestersManagementPageState extends State<RequestersManagementPage> {
     );
   }
 
+  Widget _buildInfoTile(String label, String value, {double? width}) {
+    final display = value.trim().isEmpty ? '—' : value.trim();
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 108,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF4B5563),
+                ),
+              ),
+            ),
+            Expanded(child: Text(display)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCompaniesPanel() {
     return Card(
       elevation: 0,
@@ -1327,7 +1353,123 @@ class _RequestersManagementPageState extends State<RequestersManagementPage> {
     );
   }
 
-  Widget _buildDetailsPanel() {
+  Widget _buildCompanyDetailsCard(ClientSummary company) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE5E7EB)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    company.name,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _showCompanyDialog(company: company),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Modifier'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _deleteCompany(company),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Désactiver'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const spacing = 16.0;
+                final maxWidth = constraints.maxWidth;
+                final columns = maxWidth >= 1180
+                    ? 3
+                    : (maxWidth >= 760 ? 2 : 1);
+                final itemWidth =
+                    (maxWidth - (spacing * (columns - 1))) / columns;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: spacing,
+                      runSpacing: 0,
+                      children: [
+                        _buildInfoTile(
+                          'Alias',
+                          company.alias,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile(
+                          'Code postal',
+                          company.zip,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile('Ville', company.town, width: itemWidth),
+                        _buildInfoTile(
+                          'Pays',
+                          company.countryLabel,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile(
+                          'Département',
+                          company.departmentLabel,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile(
+                          'Téléphone',
+                          company.phone,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile('Fax', company.fax, width: itemWidth),
+                        _buildInfoTile(
+                          'Email',
+                          company.email,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile(
+                          'Site web',
+                          company.website,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile(
+                          'SIREN',
+                          company.siren,
+                          width: itemWidth,
+                        ),
+                        _buildInfoTile(
+                          'SIRET',
+                          company.siret,
+                          width: itemWidth,
+                        ),
+                      ],
+                    ),
+                    _buildInfoLine('Adresse', company.address),
+                    _buildInfoLine('Note publique', company.notePublic),
+                    _buildInfoLine('Note privée', company.notePrivate),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailsPanel({bool compact = false}) {
     final company = _selectedCompany;
     if (company == null) {
       return Card(
@@ -1347,63 +1489,30 @@ class _RequestersManagementPageState extends State<RequestersManagementPage> {
       );
     }
 
-    return Column(
-      children: [
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: Color(0xFFE5E7EB)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        company.name,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => _showCompanyDialog(company: company),
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Modifier'),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => _deleteCompany(company),
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Désactiver'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _buildInfoLine('Alias', company.alias),
-                _buildInfoLine('Adresse', company.address),
-                _buildInfoLine('Code postal', company.zip),
-                _buildInfoLine('Ville', company.town),
-                _buildInfoLine('Pays', company.countryLabel),
-                _buildInfoLine('Département', company.departmentLabel),
-                _buildInfoLine('Téléphone', company.phone),
-                _buildInfoLine('Fax', company.fax),
-                _buildInfoLine('Email', company.email),
-                _buildInfoLine('Site web', company.website),
-                _buildInfoLine('SIREN', company.siren),
-                _buildInfoLine('SIRET', company.siret),
-                _buildInfoLine('Note publique', company.notePublic),
-                _buildInfoLine('Note privée', company.notePrivate),
-              ],
+    if (compact) {
+      return Column(
+        children: [
+          Flexible(
+            fit: FlexFit.loose,
+            child: SingleChildScrollView(
+              child: _buildCompanyDetailsCard(company),
             ),
           ),
+          const SizedBox(height: 12),
+          SizedBox(height: 420, child: _buildContactsSection()),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        Flexible(
+          fit: FlexFit.loose,
+          child: SingleChildScrollView(
+            child: _buildCompanyDetailsCard(company),
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Expanded(child: _buildContactsSection()),
       ],
     );
@@ -1414,7 +1523,7 @@ class _RequestersManagementPageState extends State<RequestersManagementPage> {
     if (!widget.userRights.canManageMissions() &&
         !widget.userRights.isAdmin()) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Sociétés et personnes demandeuses')),
+        appBar: AppBar(title: const Text('Sociétés et contacts')),
         body: const Center(
           child: Text('Vous n\'avez pas les droits pour accéder à cette page.'),
         ),
@@ -1425,34 +1534,38 @@ class _RequestersManagementPageState extends State<RequestersManagementPage> {
     final bool compact = MediaQuery.of(context).size.width < 1100;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sociétés et personnes demandeuses')),
+      appBar: AppBar(title: const Text('Sociétés et contacts')),
       body: ResponsiveContainer(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: spacing),
-          child: Column(
-            children: [
-              Expanded(
-                child: compact
-                    ? Column(
-                        children: [
-                          Expanded(child: _buildCompaniesPanel()),
-                          const SizedBox(height: 16),
-                          Expanded(child: _buildDetailsPanel()),
-                        ],
-                      )
-                    : Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          children: [
+            Expanded(
+              child: compact
+                  ? ListView(
+                      padding: EdgeInsets.only(top: spacing * 0.5),
+                      children: [
+                        SizedBox(height: 320, child: _buildCompaniesPanel()),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.78,
+                          child: _buildDetailsPanel(compact: true),
+                        ),
+                      ],
+                    )
+                  : Padding(
+                      padding: EdgeInsets.only(top: spacing * 0.5),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           SizedBox(width: 360, child: _buildCompaniesPanel()),
                           const SizedBox(width: 16),
                           Expanded(child: _buildDetailsPanel()),
                         ],
                       ),
-              ),
-              const SizedBox(height: 12),
-              const BrandFooter(),
-            ],
-          ),
+                    ),
+            ),
+            const SizedBox(height: 8),
+            const BrandFooter(),
+          ],
         ),
       ),
     );

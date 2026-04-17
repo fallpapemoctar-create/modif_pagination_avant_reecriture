@@ -5,6 +5,7 @@ import '../core/responsive_helper.dart';
 import '../pages/interpreters_page.dart';
 import '../pages/missions_table_page.dart';
 import '../pages/billing_page.dart';
+import '../pages/requesters_management_page.dart';
 import '../screens/admin_page.dart';
 import '../screens/export_page.dart';
 import '../core/brand_footer.dart';
@@ -40,6 +41,8 @@ class HomePage extends StatelessWidget {
       views.add(MissionsTablePage(userRights: rights));
       tabs.add(const Tab(text: "Facturation"));
       views.add(BillingPage(userRights: rights));
+      tabs.add(const Tab(text: "Tiers"));
+      views.add(RequestersManagementPage(userRights: rights));
     }
     if (rights.isAdmin()) {
       tabs.add(const Tab(text: "Admin"));
@@ -328,7 +331,7 @@ class HomePage extends StatelessWidget {
               _dashboardCard(
                 context: context,
                 icon: Icons.apartment,
-                label: "Demandeurs",
+                label: "Tiers",
                 color: const Color(0xFF000091),
                 onTap: () => Navigator.pushNamed(context, "/requesters"),
               ),
