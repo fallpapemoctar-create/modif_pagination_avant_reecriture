@@ -165,3 +165,83 @@ function countryInfoFromId(PDO $pdo, $id) {
     $intId = (int) $id;
     return $cache['by_id'][$intId] ?? null;
 }
+
+function getDepartmentsCache(PDO $pdo) {
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+
+    $stmt = $pdo->query("SELECT rowid, code_departement, nom FROM llx_c_departements WHERE active = 1");
+    $cache = [
+        'by_id' => [],
+        'by_code' => [],
+        'by_label' => [],
+    ];
+
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $id = (int) ($row['rowid'] ?? 0);
+        if ($id <= 0) {
+            continue;
+        }
+
+        $code = strtoupper(trim((string) ($row['code_departement'] ?? '')));
+        $label = trim((string) ($row['nom'] ?? ''));
+        $labelKey = $label !== ''
+            ? (function_exists('mb_strtoupper') ? mb_strtoupper($label, 'UTF-8') : strtoupper($label))
+            : '';
+
+        $cache['by_id'][$id] = [
+            'id' => $id,
+            'code' => $code,
+            'label' => $label,
+        ];
+
+        if ($code !== '') {
+            $cache['by_code'][$code] = $id;
+        }
+        if ($labelKey !== '') {
+            $cache['by_label'][$labelKey] = $id;
+        }
+    }
+
+    return $cache;
+}
+
+function resolveDepartmentId(PDO $pdo, $value) {
+    if ($value === null) {
+        return null;
+    }
+    $value = trim((string) $value);
+    if ($value === '') {
+        return null;
+    }
+
+    $cache = getDepartmentsCache($pdo);
+
+    if (ctype_digit($value)) {
+        $id = (int) $value;
+        if (isset($cache['by_id'][$id])) {
+            return $id;
+        }
+    }
+
+    $upper = function_exists('mb_strtoupper') ? mb_strtoupper($value, 'UTF-8') : strtoupper($value);
+    if (isset($cache['by_code'][$upper])) {
+        return $cache['by_code'][$upper];
+    }
+    if (isset($cache['by_label'][$upper])) {
+        return $cache['by_label'][$upper];
+    }
+
+    return null;
+}
+
+function departmentInfoFromId(PDO $pdo, $id) {
+    if ($id === null) {
+        return null;
+    }
+    $cache = getDepartmentsCache($pdo);
+    $intId = (int) $id;
+    return $cache['by_id'][$intId] ?? null;
+}

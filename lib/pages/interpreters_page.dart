@@ -652,6 +652,20 @@ class _InterpretersPageState extends State<InterpretersPage> {
           backgroundColor: const Color(0xFFF8F9FA),
           foregroundColor: const Color(0xFF000091),
           elevation: 1,
+          actions: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: TextButton.icon(
+                onPressed: _openFmi,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF000091),
+                  textStyle: const TextStyle(fontSize: 16),
+                ),
+                icon: const Icon(Icons.receipt_long, size: 22),
+                label: const Text('FMI - Facturation des interprètes'),
+              ),
+            ),
+          ],
         ),
         body: Padding(
           padding: EdgeInsets.symmetric(
@@ -759,30 +773,6 @@ class _InterpretersPageState extends State<InterpretersPage> {
                       icon: const Icon(Icons.add, size: 24),
                       label: const Text(
                         'Ajouter',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _openFmi,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF000091),
-                        side: const BorderSide(
-                          color: Color(0xFF000091),
-                          width: 1,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        minimumSize: const Size(120, 48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      icon: const Icon(Icons.receipt_long, size: 22),
-                      label: const Text(
-                        'FMI – Factures',
                         style: TextStyle(fontSize: 16),
                       ),
                     ),

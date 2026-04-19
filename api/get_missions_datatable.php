@@ -1,5 +1,10 @@
 <?php
 require_once __DIR__ . "/config.php";
+require_once __DIR__ . "/billing_helpers.php";
+
+// Exporting all missions can load a lot of rows; lift resource limits defensively
+@ini_set('memory_limit', '512M');
+@set_time_limit(120);
 
 function columnExists(PDO $pdo, string $table, string $column): bool {
     try {
@@ -9,6 +14,63 @@ function columnExists(PDO $pdo, string $table, string $column): bool {
         return $stmt && $stmt->rowCount() > 0;
     } catch (Exception $e) {
         return false;
+    }
+}
+
+function normalizeMissionTypesField($value): array {
+    $source = [];
+    if (is_array($value)) {
+        $source = $value;
+    } elseif (is_string($value) && $value !== '') {
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            $source = $decoded;
+        } else {
+            $source = explode(',', $value);
+        }
+    } elseif ($value === null || $value === '') {
+        return [];
+    } else {
+        $source = [$value];
+    }
+
+    $result = [];
+    foreach ($source as $item) {
+        if (is_array($item)) {
+            $item = implode(' ', $item);
+        }
+        $str = trim((string)$item);
+        if ($str === '') {
+            continue;
+        }
+        if (!isset($result[$str])) {
+            $result[$str] = true;
+        }
+    }
+
+    return array_keys($result);
+}
+
+function isZeroDateValue($value): bool {
+    if ($value === null) {
+        return true;
+    }
+    $trimmed = trim((string)$value);
+    if ($trimmed === '') {
+        return true;
+    }
+    return preg_match('/^0{4}-0{2}-0{2}(?: 0{2}:0{2}:0{2})?$/', $trimmed) === 1;
+}
+
+function normalizeIsoDateValue($value): ?string {
+    if (isZeroDateValue($value)) {
+        return null;
+    }
+    try {
+        $dateTime = new DateTime((string)$value);
+        return $dateTime->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
+        return trim((string)$value) !== '' ? (string)$value : null;
     }
 }
 
@@ -23,25 +85,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 try {
-    // Params: page, pageSize, q (search)
+    // Params: page, pageSize, q (search), requestingCompany, dateStart, dateEnd, billedStatus, missionStatus, missionType
     $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
     $pageSize = isset($_GET['pageSize']) ? intval($_GET['pageSize']) : 50;
     if ($pageSize <= 0) $pageSize = 50;
     if ($pageSize > 500) $pageSize = 500; // safety cap
     $offset = ($page - 1) * $pageSize;
     $q = isset($_GET['q']) ? trim($_GET['q']) : '';
+    $requestingCompany = isset($_GET['requestingCompany']) ? trim($_GET['requestingCompany']) : '';
+    $dateStart = isset($_GET['dateStart']) ? trim($_GET['dateStart']) : '';
+    $dateEnd = isset($_GET['dateEnd']) ? trim($_GET['dateEnd']) : '';
+    $billedStatus = isset($_GET['billedStatus']) ? trim($_GET['billedStatus']) : '';
+    $missionStatus = isset($_GET['missionStatus']) ? trim($_GET['missionStatus']) : '';
+    $missionType = isset($_GET['missionType']) ? trim($_GET['missionType']) : '';
     $exportAll = isset($_GET['exportAll']) && ($_GET['exportAll'] === '1' || strtolower($_GET['exportAll']) === 'true');
-
-    $where = "m.status <> 9";
-    $params = [];
-    if ($q !== '') {
-        $where .= " AND (m.ref LIKE :q OR u.firstname LIKE :q OR u.lastname LIKE :q OR s.nom LIKE :q OR p.ref LIKE :q)";
-        $params[':q'] = "%$q%";
-    }
 
     // Detect optional columns (compat with varying schemas)
     $modifierColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'fk_user_modif') ? 'fk_user_modif' : null;
     $hasTmsColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'tms');
+    $hasMissionTypesColumn = columnExists($pdo, 'llx_missionsplanet_mission', 'mission_types');
+
+    $where = "1=1";
+    $params = [];
+    if ($q !== '') {
+        $missionTypesSearch = $hasMissionTypesColumn ? " OR m.mission_types LIKE :q" : "";
+        $where .= " AND (m.ref LIKE :q OR u.firstname LIKE :q OR u.lastname LIKE :q OR s.nom LIKE :q OR p.ref LIKE :q OR cb.invoice_number LIKE :q OR cb.status_label LIKE :q" . $missionTypesSearch . ")";
+        $params[':q'] = "%$q%";
+    }
+    if ($requestingCompany !== '') {
+        $where .= " AND s.nom LIKE :requestingCompany";
+        $params[':requestingCompany'] = "%$requestingCompany%";
+    }
+    if ($dateStart !== '') {
+        $startDate = DateTime::createFromFormat('Y-m-d', $dateStart);
+        if ($startDate !== false) {
+            $where .= " AND m.datemission >= :dateStart";
+            $params[':dateStart'] = $startDate->format('Y-m-d');
+        }
+    }
+    if ($dateEnd !== '') {
+        $endDate = DateTime::createFromFormat('Y-m-d', $dateEnd);
+        if ($endDate !== false) {
+            $endDate->modify('+1 day');
+            $where .= " AND m.datemission < :dateEndExclusive";
+            $params[':dateEndExclusive'] = $endDate->format('Y-m-d');
+        }
+    }
+    if ($billedStatus !== '') {
+        $normalizedBilledStatus = mb_strtolower($billedStatus, 'UTF-8');
+        if ($normalizedBilledStatus === 'brouillon') {
+            $where .= " AND (b.status IS NULL OR TRIM(b.status) = '' OR LOWER(b.status) = :billedStatus)";
+            $params[':billedStatus'] = 'brouillon';
+        } else {
+            $where .= " AND LOWER(b.status) = :billedStatus";
+            $params[':billedStatus'] = $normalizedBilledStatus;
+        }
+    }
+    if ($missionStatus !== '') {
+        $parsedMissionStatus = intval($missionStatus);
+        $where .= " AND m.status = :missionStatus";
+        $params[':missionStatus'] = $parsedMissionStatus;
+    }
+    if ($missionType !== '') {
+        if ($hasMissionTypesColumn) {
+            $where .= " AND LOWER(m.mission_types) LIKE :missionType";
+            $params[':missionType'] = '%' . mb_strtolower($missionType, 'UTF-8') . '%';
+        } else {
+            $where .= " AND 1 = 0";
+        }
+    }
+
     // Detect correct creator column name (fk_user_creator vs fk_user_create)
     $creatorColumn = null;
     try {
@@ -65,6 +178,8 @@ try {
         $creatorColumn = null;
     }
 
+    ensureClientBillingTable($pdo);
+
     // Count total
     $countSql = "
         SELECT COUNT(*) AS total
@@ -72,6 +187,28 @@ try {
         LEFT JOIN llx_user u ON m.nominterprete = u.rowid
         LEFT JOIN llx_product p ON m.langue = p.rowid
         LEFT JOIN llx_societe s ON s.rowid = m.fk_soc
+        LEFT JOIN (
+            SELECT bb.ref, bb.status
+            FROM tble_mission_billed bb
+            INNER JOIN (
+                SELECT ref, MAX(billed_at) AS max_billed_at
+                FROM tble_mission_billed
+                GROUP BY ref
+            ) last ON last.ref = bb.ref AND last.max_billed_at = bb.billed_at
+        ) b ON b.ref = m.ref
+        LEFT JOIN (
+            SELECT cb_inner.mission_ref,
+                   cb_inner.invoice_number,
+                   cb_inner.status_label
+            FROM tble_client_billed cb_inner
+            INNER JOIN (
+                SELECT mission_ref, MAX(billed_at) AS max_billed_at
+                FROM tble_client_billed
+                WHERE category = 'client'
+                GROUP BY mission_ref
+            ) latest_cb ON latest_cb.mission_ref = cb_inner.mission_ref AND latest_cb.max_billed_at = cb_inner.billed_at
+            WHERE cb_inner.category = 'client'
+        ) cb ON cb.mission_ref = m.ref
         WHERE $where";
     $countStmt = $pdo->prepare($countSql);
     foreach ($params as $k => $v) $countStmt->bindValue($k, $v);
@@ -90,6 +227,9 @@ try {
     $selectTms = $hasTmsColumn
         ? "m.tms AS date_modification_raw,"
         : "NULL AS date_modification_raw,";
+    $selectMissionTypes = $hasMissionTypesColumn
+        ? "m.mission_types,"
+        : "NULL AS mission_types,";
 
     $sql = "
         SELECT
@@ -97,11 +237,14 @@ try {
             m.ref AS reference_devis,
             m.label,
             m.nominterprete,
+            m.fk_soc AS client_id,
+            m.contactdemandeur AS contact_id,
+            m.description AS commentaires,
             m.datemission,
             m.heuredebutmission,
             m.dureemission,
-            m.montant_mission,
             m.status AS mission_status,
+            $selectMissionTypes
             m.date_creation,
             $selectTms
             u.firstname,
@@ -114,11 +257,19 @@ try {
             p.tva_tx AS produit_tva_tx,
             p.rowid AS id_produit_service,
             s.nom AS client_name,
+            s.code_client AS client_code,
+            s.address AS client_address,
+            s.zip AS client_zip,
+            s.town AS client_town,
             socp.firstname AS prenom_demandeur,
             socp.lastname AS nom_demandeur,
             socp.phone AS phone,
             socp.phone_mobile AS phone_mobile,
-            b.status AS billed_status
+            b.status AS billed_status,
+            cb.status_code AS client_billed_status,
+            cb.status_label AS client_billed_status_label,
+            cb.invoice_number AS client_invoice_number,
+            cb.billed_at AS client_billed_at
         FROM llx_missionsplanet_mission m
         LEFT JOIN llx_user u ON m.nominterprete = u.rowid
         $joinCreator
@@ -135,6 +286,21 @@ try {
                 GROUP BY ref
             ) last ON last.ref = bb.ref AND last.max_billed_at = bb.billed_at
         ) b ON b.ref = m.ref
+        LEFT JOIN (
+            SELECT cb_inner.mission_ref,
+                   cb_inner.invoice_number,
+                   cb_inner.status_code,
+                   cb_inner.status_label,
+                   cb_inner.billed_at
+            FROM tble_client_billed cb_inner
+            INNER JOIN (
+                SELECT mission_ref, MAX(billed_at) AS max_billed_at
+                FROM tble_client_billed
+                WHERE category = 'client'
+                GROUP BY mission_ref
+            ) latest_cb ON latest_cb.mission_ref = cb_inner.mission_ref AND latest_cb.max_billed_at = cb_inner.billed_at
+            WHERE cb_inner.category = 'client'
+        ) cb ON cb.mission_ref = m.ref
         WHERE $where
         ORDER BY m.datemission DESC, m.heuredebutmission DESC
     ";
@@ -159,42 +325,27 @@ try {
         // Build creator full name
         $r['creator_name'] = trim(($r['creator_firstname'] ?? '') . ' ' . ($r['creator_lastname'] ?? ''));
         // Format date to ISO if needed
-        if (!empty($r['datemission'])) {
-            try {
-                $dt3 = new DateTime($r['datemission']);
-                $r['datemission_iso'] = $dt3->format('Y-m-d H:i:s');
-            } catch (Exception $e) {
-                $r['datemission_iso'] = $r['datemission'];
-            }
-        } else {
-            $r['datemission_iso'] = null;
-        }
-        if (!empty($r['date_creation'])) {
-            try {
-                $dc = new DateTime($r['date_creation']);
-                $r['date_creation_iso'] = $dc->format('Y-m-d H:i:s');
-            } catch (Exception $e) {
-                $r['date_creation_iso'] = $r['date_creation'];
-            }
-        } else {
-            $r['date_creation_iso'] = null;
-        }
+        $r['datemission'] = isZeroDateValue($r['datemission'] ?? null)
+            ? null
+            : $r['datemission'];
+        $r['datemission_iso'] = normalizeIsoDateValue($r['datemission'] ?? null);
+
+        $r['date_creation'] = isZeroDateValue($r['date_creation'] ?? null)
+            ? null
+            : $r['date_creation'];
+        $r['date_creation_iso'] = normalizeIsoDateValue($r['date_creation'] ?? null);
 
         $rawModDate = $r['date_modification_raw'] ?? null;
-        $r['date_modification'] = $rawModDate;
-        if (!empty($rawModDate)) {
-            try {
-                $dm = new DateTime($rawModDate);
-                $r['date_modification_iso'] = $dm->format('Y-m-d H:i:s');
-            } catch (Exception $e) {
-                $r['date_modification_iso'] = $rawModDate;
-            }
-        } else {
-            $r['date_modification_iso'] = null;
-        }
+        $r['date_modification'] = isZeroDateValue($rawModDate) ? null : $rawModDate;
+        $r['date_modification_iso'] = normalizeIsoDateValue($r['date_modification'] ?? null);
 
         $updatedBy = trim(($r['modifier_firstname'] ?? '') . ' ' . ($r['modifier_lastname'] ?? ''));
         $r['updated_by'] = $updatedBy !== '' ? $updatedBy : null;
+        if ($hasMissionTypesColumn) {
+            $r['mission_types'] = normalizeMissionTypesField($r['mission_types'] ?? []);
+        } else {
+            $r['mission_types'] = [];
+        }
     }
 
     echo json_encode([

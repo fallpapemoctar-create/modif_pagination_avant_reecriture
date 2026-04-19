@@ -3,6 +3,14 @@ import 'package:http/http.dart' as http;
 import '../models/mission.dart';
 import '../core/app_config.dart';
 
+class MissionApiResult {
+  final bool success;
+  final String? message;
+  final Map<String, dynamic>? data;
+
+  const MissionApiResult({required this.success, this.message, this.data});
+}
+
 class MissionService {
   static String get baseUrl => AppConfig.instance.apiBaseUrl;
 
@@ -114,12 +122,29 @@ class MissionService {
     }
   }
 
-  static Future<Map<String, dynamic>> getMissionsDatatable({int page = 1, int pageSize = 50, String? q}) async {
+  static Future<Map<String, dynamic>> getMissionsDatatable({
+    int page = 1,
+    int pageSize = 50,
+    String? q,
+    String? requestingCompany,
+    String? dateStart,
+    String? dateEnd,
+    String? billedStatus,
+    String? missionStatus,
+    String? missionType,
+  }) async {
     try {
       final uri = Uri.parse("${baseUrl}get_missions_datatable.php").replace(queryParameters: {
         'page': page.toString(),
         'pageSize': pageSize.toString(),
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (requestingCompany != null && requestingCompany.trim().isNotEmpty)
+          'requestingCompany': requestingCompany.trim(),
+        if (dateStart != null && dateStart.trim().isNotEmpty) 'dateStart': dateStart.trim(),
+        if (dateEnd != null && dateEnd.trim().isNotEmpty) 'dateEnd': dateEnd.trim(),
+        if (billedStatus != null && billedStatus.trim().isNotEmpty) 'billedStatus': billedStatus.trim(),
+        if (missionStatus != null && missionStatus.trim().isNotEmpty) 'missionStatus': missionStatus.trim(),
+        if (missionType != null && missionType.trim().isNotEmpty) 'missionType': missionType.trim(),
       });
       final response = await http.get(uri);
       final decoded = jsonDecode(response.body);
@@ -143,11 +168,26 @@ class MissionService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getMissionsDatatableAll({String? q}) async {
+  static Future<List<Map<String, dynamic>>> getMissionsDatatableAll({
+    String? q,
+    String? requestingCompany,
+    String? dateStart,
+    String? dateEnd,
+    String? billedStatus,
+    String? missionStatus,
+    String? missionType,
+  }) async {
     try {
       final uri = Uri.parse("${baseUrl}get_missions_datatable.php").replace(queryParameters: {
         'exportAll': '1',
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (requestingCompany != null && requestingCompany.trim().isNotEmpty)
+          'requestingCompany': requestingCompany.trim(),
+        if (dateStart != null && dateStart.trim().isNotEmpty) 'dateStart': dateStart.trim(),
+        if (dateEnd != null && dateEnd.trim().isNotEmpty) 'dateEnd': dateEnd.trim(),
+        if (billedStatus != null && billedStatus.trim().isNotEmpty) 'billedStatus': billedStatus.trim(),
+        if (missionStatus != null && missionStatus.trim().isNotEmpty) 'missionStatus': missionStatus.trim(),
+        if (missionType != null && missionType.trim().isNotEmpty) 'missionType': missionType.trim(),
       });
       final response = await http.get(uri);
       final decoded = jsonDecode(response.body);
@@ -165,9 +205,17 @@ class MissionService {
   // ------------------------------------------------------------
   // GET : Liste des interprètes (annuaire)
   // ------------------------------------------------------------
-  static Future<List<Map<String, dynamic>>> getInterpretes() async {
+  static Future<List<Map<String, dynamic>>> getInterpretes({
+    String? query,
+    int limit = 250,
+  }) async {
     try {
-      final uri = Uri.parse("${baseUrl}get_interpretes.php");
+      final uri = Uri.parse("${baseUrl}get_interpretes.php").replace(
+        queryParameters: {
+          if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+          'limit': limit.toString(),
+        },
+      );
       final response = await http.get(uri);
       if (response.statusCode != 200) return [];
       final decoded = jsonDecode(response.body);
@@ -224,25 +272,56 @@ class MissionService {
     return jsonDecode(response.body)["success"] == true;
   }
 
-  // Convenience methods that accept a raw Map payload (useful when server expects flexible keys)
-  static Future<bool> addMissionMap(Map<String, dynamic> payload) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/add_mission_interpreter.php"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(payload),
-    );
-    if (response.statusCode != 200) return false;
-    return jsonDecode(response.body)["success"] == true;
+  static MissionApiResult _parseMissionResponse(http.Response response) {
+    try {
+      final dynamic decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final bool success = decoded['success'] == true;
+        final dynamic rawMessage = decoded['message'] ?? decoded['error'];
+        final String? message = rawMessage == null
+            ? null
+            : rawMessage.toString().trim().isEmpty
+                ? null
+                : rawMessage.toString().trim();
+        return MissionApiResult(success: success, message: message, data: decoded);
+      }
+      if (decoded is bool) {
+        return MissionApiResult(success: decoded, data: {'success': decoded});
+      }
+    } catch (_) {
+      // ignore JSON parsing errors, fall back to status code message
+    }
+    final bool ok = response.statusCode >= 200 && response.statusCode < 300;
+    final body = response.body.trim();
+    final fallback = body.isNotEmpty ? body : 'Erreur serveur (${response.statusCode})';
+    return MissionApiResult(success: ok, message: ok ? null : fallback, data: null);
   }
 
-  static Future<bool> updateMissionMap(Map<String, dynamic> payload) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/update_mission_interpreter.php"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(payload),
-    );
-    if (response.statusCode != 200) return false;
-    return jsonDecode(response.body)["success"] == true;
+  // Convenience methods that accept a raw Map payload (useful when server expects flexible keys)
+  static Future<MissionApiResult> addMissionMap(Map<String, dynamic> payload) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/add_mission_interpreter.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(payload),
+      );
+      return _parseMissionResponse(response);
+    } catch (e) {
+      return MissionApiResult(success: false, message: 'Erreur réseau: $e');
+    }
+  }
+
+  static Future<MissionApiResult> updateMissionMap(Map<String, dynamic> payload) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/update_mission_interpreter.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(payload),
+      );
+      return _parseMissionResponse(response);
+    } catch (e) {
+      return MissionApiResult(success: false, message: 'Erreur réseau: $e');
+    }
   }
 
 }
