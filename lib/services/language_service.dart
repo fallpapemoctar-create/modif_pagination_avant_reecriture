@@ -50,7 +50,7 @@ class LanguageService {
   static Future<List<LanguageOption>> getLanguages({String? query, int limit = 250, int? type}) async {
     final trimmedQuery = query?.trim();
     final Map<String, String> params = {
-      'limit': limit.clamp(1, 1000).toString(),
+      'limit': limit.clamp(1, 10000).toString(),
     };
     if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
       params['q'] = trimmedQuery;

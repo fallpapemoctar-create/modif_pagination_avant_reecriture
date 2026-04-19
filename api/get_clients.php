@@ -16,7 +16,7 @@ try {
     $q = isset($_GET['q']) ? trim($_GET['q']) : '';
     $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 500;
     $activeOnly = isset($_GET['active_only']) && $_GET['active_only'] === '1';
-    if ($limit <= 0 || $limit > 2000) {
+    if ($limit <= 0 || $limit > 10000) {
         $limit = 500;
     }
 

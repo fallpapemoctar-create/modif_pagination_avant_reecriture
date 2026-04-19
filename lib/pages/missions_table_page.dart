@@ -574,12 +574,19 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
 
   Future<void> _loadLanguageOptions() async {
     try {
-      final names = await LanguageService.getLanguageDisplayNames(limit: 500);
+      final options = await LanguageService.getLanguages(limit: 10000);
       if (!mounted) return;
       setState(() {
-        _languageOptions = names;
-        _languageEntries = names
-            .map((name) => _AutocompleteEntry<String>(value: name, label: name))
+        _languageOptions = options.map((option) => option.displayName).toList();
+        _languageEntries = options
+            .map(
+              (option) => _AutocompleteEntry<String>(
+                value: option.ref.trim().isEmpty
+                    ? option.displayName
+                    : option.ref.trim(),
+                label: option.displayName,
+              ),
+            )
             .toList();
       });
     } catch (_) {
@@ -1345,7 +1352,8 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool compact = constraints.maxWidth < 720;
-        final bool medium = constraints.maxWidth < 1080;
+        final bool stackedFilters = constraints.maxWidth < 980;
+        final bool stackedActions = constraints.maxWidth < 1180;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1381,35 +1389,46 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    crossAxisAlignment: WrapCrossAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: compact
-                            ? constraints.maxWidth
-                            : medium
-                            ? constraints.maxWidth
-                            : 390,
-                        child: _buildStatusFilters(compact: compact),
-                      ),
-                      SizedBox(
-                        width: compact
-                            ? constraints.maxWidth
-                            : medium
-                            ? constraints.maxWidth
-                            : 360,
-                        child: _buildSearchPanel(compact: compact),
-                      ),
-                      if (!compact)
-                        TextButton(
+                  if (stackedFilters) ...[
+                    _buildStatusFilters(compact: compact),
+                    const SizedBox(height: 16),
+                    _buildSearchPanel(compact: compact),
+                    if (!compact) ...[
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
                           onPressed: () =>
                               setState(() => _filtersCollapsed = true),
                           child: const Text('Masquer les filtres'),
                         ),
+                      ),
                     ],
-                  ),
+                  ] else ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 11,
+                          child: _buildStatusFilters(compact: false),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 10,
+                          child: _buildSearchPanel(compact: false),
+                        ),
+                        const SizedBox(width: 16),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: TextButton(
+                            onPressed: () =>
+                                setState(() => _filtersCollapsed = true),
+                            child: const Text('Masquer les filtres'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   _buildFilterSummaryText(),
                   const SizedBox(height: 14),
@@ -1417,23 +1436,25 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     _buildDateControls(compact: true),
                     const SizedBox(height: 12),
                     _buildActionButtonsRow(compact: true),
+                  ] else if (stackedActions) ...[
+                    _buildDateControls(),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildActionButtonsRow(),
+                    ),
                   ] else ...[
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 12,
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            minWidth: 320,
-                            maxWidth: 680,
-                          ),
-                          child: _buildDateControls(),
-                        ),
+                        Expanded(child: _buildDateControls()),
+                        const SizedBox(width: 16),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 520),
-                          child: _buildActionButtonsRow(),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _buildActionButtonsRow(),
+                          ),
                         ),
                       ],
                     ),
@@ -1453,16 +1474,18 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   Widget _buildCollapsedFiltersBanner() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 240, maxWidth: 760),
             child: Text(
               'Filtres masqués. Cliquez sur "Afficher les filtres" pour modifier la recherche.',
               style: TextStyle(color: Colors.grey.shade700),
             ),
           ),
-          const SizedBox(width: 12),
           TextButton(
             onPressed: () => setState(() => _filtersCollapsed = false),
             child: const Text('Afficher les filtres'),
@@ -2752,10 +2775,15 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
           .toString(),
     );
 
-    _selectedLanguageRef =
-        (mission?['produit_ref'] ?? '').toString().trim().isEmpty
-        ? null
-        : (mission?['produit_ref'] ?? '').toString().trim();
+    final initialLanguageRef = (mission?['produit_ref'] ?? '').toString().trim();
+    final initialLanguageLabel = (mission?['produit_label'] ?? '').toString().trim();
+    if (initialLanguageLabel.isNotEmpty) {
+      _langueCtrl.text = initialLanguageLabel;
+    } else if (initialLanguageRef.isNotEmpty) {
+      _langueCtrl.text = initialLanguageRef;
+    }
+
+    _selectedLanguageRef = initialLanguageRef.isEmpty ? null : initialLanguageRef;
 
     _selectedMissionDate = widget.parseMissionDate(_dateCtrl.text);
     if (_selectedMissionDate != null) {
@@ -2853,8 +2881,8 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
   Future<void> _loadLookups() async {
     try {
       final results = await Future.wait([
-        MissionService.getInterpretes(limit: 100),
-        ClientService.getClientSummaries(limit: 100),
+        MissionService.getInterpretes(limit: 1000),
+        ClientService.getClientSummaries(limit: 10000),
       ]);
       if (!mounted) return;
       setState(() {
@@ -2991,7 +3019,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     try {
       final results = await ClientService.getClientSummaries(
         query: normalized.isEmpty ? null : normalized,
-        limit: normalized.isEmpty ? 100 : 50,
+        limit: normalized.isEmpty ? 10000 : 1000,
       );
       if (!mounted || requestId != _clientSearchRequestId) return;
       setState(() {
@@ -3042,7 +3070,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     try {
       final results = await MissionService.getInterpretes(
         query: normalized.isEmpty ? null : normalized,
-        limit: normalized.isEmpty ? 100 : 50,
+        limit: normalized.isEmpty ? 1000 : 200,
       );
       if (!mounted || requestId != _interpreterSearchRequestId) return;
       setState(() {
@@ -3070,7 +3098,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
     try {
       final results = await LanguageService.getLanguages(
         query: normalized.isEmpty ? null : normalized,
-        limit: normalized.isEmpty ? 100 : 50,
+        limit: normalized.isEmpty ? 1000 : 200,
       );
       if (!mounted || requestId != _languageSearchRequestId) return;
       setState(() {
@@ -3470,7 +3498,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
               try {
                 final results = await ClientService.getClientSummaries(
                   query: normalized.isEmpty ? null : normalized,
-                  limit: normalized.isEmpty ? 100 : 50,
+                  limit: normalized.isEmpty ? 10000 : 1000,
                 );
                 if (!mounted || currentRequestId != requestId) return;
 
@@ -3637,7 +3665,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
               try {
                 final results = await MissionService.getInterpretes(
                   query: normalized.isEmpty ? null : normalized,
-                  limit: normalized.isEmpty ? 100 : 50,
+                  limit: normalized.isEmpty ? 1000 : 200,
                 );
                 if (!mounted || currentRequestId != requestId) return;
 
@@ -3784,6 +3812,14 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
 
   Future<void> _showLanguagePicker() async {
     if (_languageSearchLoading) return;
+
+    // Always reopen from the full loaded list instead of a stale previous search.
+    if (_languageSearchEntries.isNotEmpty && widget.languageEntries.isNotEmpty) {
+      setState(() {
+        _languageSearchEntries = <_AutocompleteEntry<String>>[];
+      });
+    }
+
     if (_languageSearchEntries.isEmpty && widget.languageEntries.isEmpty) {
       await _searchLanguages('');
       if (!mounted) return;
@@ -3811,7 +3847,7 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
               try {
                 final results = await LanguageService.getLanguages(
                   query: normalized.isEmpty ? null : normalized,
-                  limit: normalized.isEmpty ? 100 : 50,
+                  limit: 10000,
                 );
                 if (!mounted || currentRequestId != requestId) return;
 
@@ -3824,7 +3860,11 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                         label: option.displayName,
                       ),
                     )
-                    .toList();
+                    .toList()
+                  ..sort(
+                    (a, b) =>
+                        a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+                  );
 
                 setState(() {
                   _languageSearchEntries = mappedEntries;
@@ -3886,9 +3926,6 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                                 final entry = entries[index];
                                 return ListTile(
                                   title: Text(entry.label),
-                                  subtitle: entry.value != entry.label
-                                      ? Text(entry.value)
-                                      : null,
                                   onTap: () {
                                     selectedEntry = entry;
                                     Navigator.of(dialogContext).pop();

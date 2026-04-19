@@ -117,7 +117,7 @@ class ClientService {
 
   static Future<List<ClientSummary>> getClientSummaries({
     String? query,
-    int limit = 500,
+    int limit = 10000,
   }) async {
     final uri = Uri.parse("${_baseUrl}get_clients.php").replace(
       queryParameters: {
@@ -147,7 +147,7 @@ class ClientService {
 
   static Future<List<String>> getClients({
     String? query,
-    int limit = 500,
+    int limit = 10000,
   }) async {
     final summaries = await getClientSummaries(query: query, limit: limit);
     return summaries.map((summary) => summary.name).toList();
@@ -155,7 +155,7 @@ class ClientService {
 
   static Future<List<ClientSummary>> getRequestingCompanies({
     String? query,
-    int limit = 500,
+    int limit = 10000,
     bool activeOnly = true,
   }) async {
     final uri = Uri.parse('${_baseUrl}get_clients.php').replace(

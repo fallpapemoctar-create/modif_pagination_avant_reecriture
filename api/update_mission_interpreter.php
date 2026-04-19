@@ -97,9 +97,15 @@ try {
     // langue/product
     if (isset($data['id_produit_service'])) { $fields[] = 'langue = :langue'; $params[':langue'] = (int)$data['id_produit_service']; }
     else if (isset($data['produit_ref'])) {
+        $rawProduit = trim((string)$data['produit_ref']);
         $stmtProd = $pdo->prepare("SELECT rowid FROM llx_product WHERE ref = :ref LIMIT 1");
-        $stmtProd->execute([':ref' => trim($data['produit_ref'])]);
+        $stmtProd->execute([':ref' => $rawProduit]);
         $row = $stmtProd->fetch();
+        if (!$row || !isset($row['rowid'])) {
+            $stmtProd = $pdo->prepare("SELECT rowid FROM llx_product WHERE label = :label LIMIT 1");
+            $stmtProd->execute([':label' => $rawProduit]);
+            $row = $stmtProd->fetch();
+        }
         if ($row && isset($row['rowid'])) { $fields[] = 'langue = :langue'; $params[':langue'] = (int)$row['rowid']; }
     }
 

@@ -8,7 +8,7 @@ header("Content-Type: application/json; charset=UTF-8");
 try {
     $q = isset($_GET['q']) ? trim($_GET['q']) : '';
     $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 250;
-    if ($limit <= 0 || $limit > 2000) {
+    if ($limit <= 0 || $limit > 10000) {
         $limit = 250;
     }
 
@@ -31,23 +31,9 @@ try {
             c.label AS country_label,
             c.code AS country_code,
             c.code_iso AS country_iso
-        FROM llx_user u
-        LEFT JOIN llx_c_country c ON c.rowid = u.fk_country
-        WHERE u.entity = 1
-          AND (
-                EXISTS (
-                    SELECT 1
-                    FROM tble_user_rights ur
-                    INNER JOIN tble_rights r ON r.id = ur.right_id
-                    WHERE ur.user_id = u.rowid
-                      AND r.name = 'interprete'
-                )
-                OR (
-                    COALESCE(u.interp_langues, u.interp_commentaires, u.selectdispo) IS NOT NULL
-                    AND COALESCE(u.interp_langues, u.interp_commentaires, u.selectdispo) <> ''
-                )
-                OR u.fk_country IS NOT NULL
-            )
+                FROM llx_user u
+                LEFT JOIN llx_c_country c ON c.rowid = u.fk_country
+                WHERE u.rowid IS NOT NULL
     ";
 
     $params = [];
@@ -59,6 +45,7 @@ try {
             OR CONCAT_WS(' ', u.firstname, u.lastname) LIKE :search
             OR u.email LIKE :search
             OR u.interp_langues LIKE :search
+            OR u.login LIKE :search
         )";
         $params[':search'] = '%' . $q . '%';
     }

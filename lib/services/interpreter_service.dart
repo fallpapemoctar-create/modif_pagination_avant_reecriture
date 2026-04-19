@@ -10,9 +10,13 @@ class InterpreterService {
   // -----------------------------
   // GET : Liste des interprètes
   // -----------------------------
-  static Future<List<Interpreter>> getInterpreters() async {
+  static Future<List<Interpreter>> getInterpreters({int limit = 10000}) async {
     try {
-      final response = await http.get(Uri.parse("${baseUrl}get_interpretes.php"));
+      final normalizedLimit = limit.clamp(1, 10000);
+      final uri = Uri.parse("${baseUrl}get_interpretes.php").replace(
+        queryParameters: {'limit': normalizedLimit.toString()},
+      );
+      final response = await http.get(uri);
 
       // Debug logs removed for production cleanliness
 

@@ -14,13 +14,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
 try {
     $query = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
     $limitParam = isset($_GET['limit']) ? (int) $_GET['limit'] : 250;
-    $limit = max(1, min($limitParam, 1000));
+    $limit = max(1, min($limitParam, 10000));
     $typeParam = isset($_GET['type']) ? trim((string) $_GET['type']) : '';
 
     $sql = [
         'SELECT rowid, ref, label, price, price_ttc, tva_tx',
         'FROM llx_product',
-        'WHERE (ref IS NOT NULL AND ref <> \'\') OR (label IS NOT NULL AND label <> \'\')'
+        'WHERE ((ref IS NOT NULL AND ref <> \'\') OR (label IS NOT NULL AND label <> \'\'))'
     ];
     $conditions = [];
     $bindings = [];

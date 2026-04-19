@@ -121,7 +121,8 @@ class _RequestersManagementPageState extends State<RequestersManagementPage> {
         query: _companySearchCtrl.text.trim().isEmpty
             ? null
             : _companySearchCtrl.text.trim(),
-        limit: 500,
+        limit: 10000,
+        activeOnly: false,
       );
       if (!mounted) return;
 
