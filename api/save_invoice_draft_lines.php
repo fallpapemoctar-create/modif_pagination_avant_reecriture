@@ -26,6 +26,8 @@ if (!is_array($input)) {
 
 $clientName = trim((string) ($input['client_name'] ?? ''));
 $draftKeyInput = trim((string) ($input['draft_key'] ?? ''));
+// AMI v1.3 : support draft_id (priorité sur draft_key)
+$draftIdInput = isset($input['draft_id']) && $input['draft_id'] !== null ? (int) $input['draft_id'] : null;
 $periodMonthValue = $input['period_month'] ?? null;
 $periodMonth = $periodMonthValue !== null ? invoiceParsePeriodMonth($periodMonthValue) : null;
 $periodMonthKey = $periodMonth ? $periodMonth->format('Y-m-01') : null;
@@ -127,13 +129,73 @@ try {
         ]);
     }
 
+    // AMI v1.3 — Phase 2 : si draft_id fourni, synchroniser invoice_draft_lines
+    if ($draftIdInput !== null && $draftIdInput > 0) {
+        $draftTableCheck = $pdo->query("SHOW TABLES LIKE 'invoice_draft'");
+        if ($draftTableCheck && $draftTableCheck->rowCount() > 0) {
+            // Vérifier que le draft existe et n'est pas finalisé
+            $draftCheckStmt = $pdo->prepare("SELECT id, status FROM invoice_draft WHERE id = :id");
+            $draftCheckStmt->execute([':id' => $draftIdInput]);
+            $draftRow = $draftCheckStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($draftRow && $draftRow['status'] === 'draft') {
+                $linesTableCheck = $pdo->query("SHOW TABLES LIKE 'invoice_draft_lines'");
+                if ($linesTableCheck && $linesTableCheck->rowCount() > 0) {
+                    // Remplacer les lignes du draft
+                    $pdo->prepare("DELETE FROM invoice_draft_lines WHERE draft_id = :id")
+                        ->execute([':id' => $draftIdInput]);
+
+                    $draftLineStmt = $pdo->prepare("INSERT INTO invoice_draft_lines
+                        (draft_id, mission_id, description, quantity, unit_price, total, sort_order)
+                        VALUES (:draft_id, :mission_id, :description, :quantity, :unit_price, :total, :sort_order)");
+
+                    $recalcTotal = 0.0;
+                    foreach ($lines as $idx2 => $line) {
+                        if (!is_array($line)) {
+                            continue;
+                        }
+                        $desc     = trim((string) ($line['designation'] ?? '')) ?: 'Ligne de facture';
+                        $qty      = invoiceNormalizeDecimal($line['quantity'] ?? 1, 1.0);
+                        $price    = invoiceNormalizeDecimal($line['unit_price_ht'] ?? $line['unit_price'] ?? 0);
+                        $lineTotal = invoiceNormalizeDecimal($line['total_ht'] ?? ($price * $qty));
+                        if ($lineTotal <= 0 && $price > 0 && $qty > 0) {
+                            $lineTotal = $price * $qty;
+                        }
+                        $recalcTotal += $lineTotal;
+
+                        $missionIdRaw = $line['mission_id'] ?? null;
+                        $missionId = ($missionIdRaw !== null && (int) $missionIdRaw > 0) ? (int) $missionIdRaw : null;
+
+                        $draftLineStmt->execute([
+                            ':draft_id'    => $draftIdInput,
+                            ':mission_id'  => $missionId,
+                            ':description' => $desc,
+                            ':quantity'    => $qty,
+                            ':unit_price'  => $price,
+                            ':total'       => $lineTotal,
+                            ':sort_order'  => (int) $idx2,
+                        ]);
+                    }
+
+                    // Mettre à jour le total_ht du draft header
+                    $pdo->prepare("UPDATE invoice_draft SET total_ht = :total, updated_at = NOW() WHERE id = :id")
+                        ->execute([':total' => round($recalcTotal, 2), ':id' => $draftIdInput]);
+                }
+            }
+        }
+    }
+
     $pdo->commit();
 
-    respond(200, [
-        'success' => true,
+    $responsePayload = [
+        'success'   => true,
         'draft_key' => $draftKey,
-        'lines' => count($lines),
-    ]);
+        'lines'     => count($lines),
+    ];
+    if ($draftIdInput !== null && $draftIdInput > 0) {
+        $responsePayload['draft_id'] = $draftIdInput;
+    }
+    respond(200, $responsePayload);
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();

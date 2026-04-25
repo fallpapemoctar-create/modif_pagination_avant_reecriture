@@ -194,7 +194,7 @@ class BillingPageArguments {
   final List<Map<String, dynamic>> missions;
 }
 
-enum BillingSection { creation, invoices }
+enum BillingSection { creation, invoices, preparations }
 
 enum _CreateInvoiceActionState { idle, loading, success, error }
 
@@ -234,7 +234,10 @@ class _BillingPageState extends State<BillingPage> {
   bool _showLinePanel = false;
   bool _loadingDraft = false;
   bool _savingDraft = false;
+  bool _savingDraftHeader = false;
   String? _draftKey;
+  // AMI v1.3 : identifiant du draft persist\u00e9 (null si pas de draft enregistr\u00e9 via save_invoice_draft.php)
+  int? _draftId;
 
   TextEditingController? _lineDesignationCtrl;
   TextEditingController? _lineQuantityCtrl;
@@ -260,6 +263,11 @@ class _BillingPageState extends State<BillingPage> {
   pw.Font? _pdfFontRegular;
   pw.Font? _pdfFontBold;
   pw.MemoryImage? _pdfLogoImage;
+
+  // AMI v1.3 — Préparations en cours
+  List<InvoiceDraftSummary> _drafts = [];
+  bool _loadingDrafts = false;
+  String? _draftsError;
 
   List<ClientInvoiceSummary> _invoices = [];
   bool _loadingInvoices = false;
@@ -646,6 +654,11 @@ class _BillingPageState extends State<BillingPage> {
                 icon: Icon(Icons.receipt_long_outlined),
                 label: Text('Factures'),
               ),
+              ButtonSegment<BillingSection>(
+                value: BillingSection.preparations,
+                icon: Icon(Icons.folder_copy_outlined),
+                label: Text('Préparations'),
+              ),
             ],
             selected: <BillingSection>{_activeSection},
             onSelectionChanged: (selection) {
@@ -740,6 +753,13 @@ class _BillingPageState extends State<BillingPage> {
                   onTap: () => _setActiveSection(BillingSection.invoices),
                   collapsed: collapsed,
                 ),
+                _SidebarEntry(
+                  icon: Icons.folder_copy_outlined,
+                  label: 'Préparations',
+                  selected: _activeSection == BillingSection.preparations,
+                  onTap: () => _setActiveSection(BillingSection.preparations),
+                  collapsed: collapsed,
+                ),
               ],
             ),
           ),
@@ -812,6 +832,8 @@ class _BillingPageState extends State<BillingPage> {
         return _buildCreationView(spacing);
       case BillingSection.invoices:
         return _buildInvoicesView(spacing);
+      case BillingSection.preparations:
+        return _buildPreparationsView(spacing);
     }
   }
 
@@ -836,6 +858,9 @@ class _BillingPageState extends State<BillingPage> {
         _invoices.isEmpty &&
         !_loadingInvoices) {
       unawaited(_loadInvoices(reset: true));
+    }
+    if (section == BillingSection.preparations && !_loadingDrafts) {
+      unawaited(_loadDrafts());
     }
   }
 
@@ -1173,6 +1198,17 @@ class _BillingPageState extends State<BillingPage> {
         ),
       ),
       OutlinedButton.icon(
+        onPressed: _canSaveDraft ? _saveCurrentDraftHeader : null,
+        icon: _savingDraftHeader
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.bookmark_add_outlined),
+        label: Text(_savingDraftHeader ? 'Sauvegarde...' : 'Sauvegarder la préparation'),
+      ),
+      OutlinedButton.icon(
         onPressed: _resetPreparationState,
         icon: const Icon(Icons.restore),
         label: const Text('Réinitialiser tout'),
@@ -1375,13 +1411,26 @@ class _BillingPageState extends State<BillingPage> {
                     style: const TextStyle(color: Color(0xFF6B7280)),
                   ),
                 if (_lineEditors.isNotEmpty) const Spacer(),
-                Text(
-                  'Total HT : ${_formatCurrency(_currentTotalHt)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF000091),
-                    fontSize: 16,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Total HT : ${_formatCurrency(_currentTotalHt)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF000091),
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      'Total TTC : ${_formatCurrency(_currentTotalTtc)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1D4ED8),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1417,10 +1466,27 @@ class _BillingPageState extends State<BillingPage> {
             }
           },
         ),
+        _buildSelectableCell(
+          _formatCurrency(line.unitPriceTtc),
+          width: columnWidths[4],
+          align: TextAlign.right,
+        ),
+        _buildEditableNumberCell(
+          label: 'Réduc.',
+          index: index,
+          width: columnWidths[5],
+          value: line.discount,
+          fractionDigits: 2,
+          onChanged: (value) {
+            if (value != null && value >= 0 && value <= 100) {
+              _updateLineFields(index, discount: value);
+            }
+          },
+        ),
         _buildEditableNumberCell(
           label: 'Quantité',
           index: index,
-          width: columnWidths[4],
+          width: columnWidths[6],
           value: line.quantity,
           fractionDigits: 3,
           onChanged: (value) {
@@ -1431,7 +1497,12 @@ class _BillingPageState extends State<BillingPage> {
         ),
         _buildSelectableCell(
           _formatCurrency(line.totalHt),
-          width: columnWidths[5],
+          width: columnWidths[7],
+          align: TextAlign.right,
+        ),
+        _buildSelectableCell(
+          _formatCurrency(line.totalTtc),
+          width: columnWidths[8],
           align: TextAlign.right,
         ),
       ],
@@ -2832,7 +2903,7 @@ class _BillingPageState extends State<BillingPage> {
   Widget _buildLinesTable({
     required ScrollController verticalController,
     required ScrollController horizontalController,
-    double minWidth = 960,
+    double minWidth = 1100,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2840,7 +2911,7 @@ class _BillingPageState extends State<BillingPage> {
             ? constraints.maxWidth
             : MediaQuery.of(context).size.width;
         final tableWidth = math.max(viewportWidth, minWidth);
-        const fractions = <double>[0.14, 0.36, 0.1, 0.14, 0.1, 0.16];
+        const fractions = <double>[0.09, 0.26, 0.07, 0.09, 0.09, 0.07, 0.07, 0.13, 0.13];
         final columnWidths = fractions
             .map((ratio) => tableWidth * ratio)
             .toList();
@@ -2888,13 +2959,31 @@ class _BillingPageState extends State<BillingPage> {
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[4],
-                        child: const Text('Qté'),
+                        child: const Text('P.U. TTC'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[5],
+                        child: const Text('Réduc. %'),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidths[6],
+                        child: const Text('Qté'),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidths[7],
                         child: const Text('Total HT'),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidths[8],
+                        child: const Text('Total TTC'),
                       ),
                     ),
                   ],
@@ -2972,13 +3061,26 @@ class _BillingPageState extends State<BillingPage> {
                       ),
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: Text(
-                          'Total HT: ${_formatCurrency(_currentTotalHt)}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                            color: Color(0xFF000091),
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Total HT : ${_formatCurrency(_currentTotalHt)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                                color: Color(0xFF000091),
+                              ),
+                            ),
+                            Text(
+                              'Total TTC : ${_formatCurrency(_currentTotalTtc)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                                color: Color(0xFF1D4ED8),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -3812,9 +3914,74 @@ class _BillingPageState extends State<BillingPage> {
                       key: ValueKey('detail-quantity-$index'),
                       width: double.infinity,
                       value: line.quantity,
-                      fractionDigits: 2,
+                      fractionDigits: 3,
                       onNumberChanged: (value) =>
                           _updateStoredInvoiceLine(index, quantity: value),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'P.U. TTC',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Color(0xFF374151),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFD1D5DB)),
+                      ),
+                      child: Text(
+                        _formatCurrency(line.unitPriceTtc),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF374151),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Réduc. %',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    _InlineEditableNumberCell(
+                      key: ValueKey('detail-discount-$index'),
+                      width: double.infinity,
+                      value: line.discount,
+                      fractionDigits: 2,
+                      onNumberChanged: (value) {
+                        if (value != null && value >= 0 && value <= 100) {
+                          _updateStoredInvoiceLine(index, discount: value);
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -3835,12 +4002,24 @@ class _BillingPageState extends State<BillingPage> {
             maxLines: 2,
           ),
           const SizedBox(height: 10),
-          Text(
-            'Total HT ${_formatCurrency(line.totalHt)}',
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF000091),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total HT : ${_formatCurrency(line.totalHt)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF000091),
+                ),
+              ),
+              Text(
+                'Total TTC : ${_formatCurrency(line.totalTtc)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1D4ED8),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -3983,6 +4162,7 @@ class _BillingPageState extends State<BillingPage> {
     double? quantity,
     double? unitPrice,
     double? tvaRate,
+    double? discount,
     String? notes,
   }) {
     if (index < 0 || index >= _selectedInvoiceLineEditors.length) return;
@@ -3999,6 +4179,9 @@ class _BillingPageState extends State<BillingPage> {
       }
       if (tvaRate != null && tvaRate >= 0) {
         line.tvaRate = tvaRate;
+      }
+      if (discount != null && discount >= 0 && discount <= 100) {
+        line.discount = discount;
       }
       if (notes != null) {
         line.notes = notes.trim().isEmpty ? null : notes;
@@ -4307,6 +4490,7 @@ class _BillingPageState extends State<BillingPage> {
     double? quantity,
     double? unitPrice,
     double? tvaRate,
+    double? discount,
   }) {
     if (index < 0 || index >= _lineEditors.length) return;
     var changed = false;
@@ -4326,6 +4510,10 @@ class _BillingPageState extends State<BillingPage> {
       }
       if (tvaRate != null && tvaRate >= 0 && tvaRate != line.tvaRate) {
         line.tvaRate = tvaRate;
+        changed = true;
+      }
+      if (discount != null && discount >= 0 && discount <= 100 && discount != line.discount) {
+        line.discount = discount;
         changed = true;
       }
     });
@@ -4377,6 +4565,39 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
+  Future<void> _saveCurrentDraftHeader() async {
+    if (!_canSaveDraft) return;
+    setState(() => _savingDraftHeader = true);
+    try {
+      final period = DateTime(_selectedMonth.year, _selectedMonth.month);
+      final newDraftId = await BillingService.saveInvoiceDraft(
+        draftId: _draftId,
+        clientName: _currentClientName,
+        periodMonth: period,
+        paymentConditionId: _selectedClientPaymentTermId,
+        bankAccountId: _selectedCompanyBankAccountId,
+        totalHt: _currentTotalHt,
+        userId: AuthManager.userId,
+      );
+      if (!mounted) return;
+      setState(() => _draftId = newDraftId);
+      // Synchroniser les lignes dans invoice_draft_lines maintenant que _draftId est connu
+      _draftSaveTimer?.cancel();
+      await _persistDraftLines();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Préparation sauvegardée.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la sauvegarde : $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingDraftHeader = false);
+    }
+  }
+
   Future<void> _persistDraftLines() async {
     if (!mounted || _lineEditors.isEmpty || _currentClientName.isEmpty) return;
     setState(() => _savingDraft = true);
@@ -4389,6 +4610,7 @@ class _BillingPageState extends State<BillingPage> {
         userId: AuthManager.userId,
         userName: AuthManager.userFullName,
         draftKey: _draftKey,
+        draftId: _draftId,
       );
       if (!mounted) return;
       setState(() => _draftKey = key);
@@ -4460,6 +4682,8 @@ class _BillingPageState extends State<BillingPage> {
       });
       await _loadClientPaymentTermsForMissions(filtered);
       await _loadCreationInvoicesForClient(force: true);
+      // AMI v1.3 — RM-07 : proposer Reprendre/Ignorer si draft existe
+      await _checkForExistingDraft();
       _applyMonthFilter();
       if (filtered.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4483,6 +4707,262 @@ class _BillingPageState extends State<BillingPage> {
         _loadError = 'Impossible de récupérer les missions (connexion ou API).';
       });
     }
+  }
+
+  // ---------------------------------------------------------------
+  // AMI v1.3 — Chargement des préparations
+  // ---------------------------------------------------------------
+
+  Future<void> _loadDrafts() async {
+    if (mounted) setState(() { _loadingDrafts = true; _draftsError = null; });
+    try {
+      final drafts = await BillingService.getInvoiceDrafts();
+      if (!mounted) return;
+      setState(() {
+        _drafts = drafts;
+        _loadingDrafts = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingDrafts = false;
+        _draftsError = e.toString();
+      });
+    }
+  }
+
+  /// Vérifie si un draft actif existe pour le client + mois sélectionnés.
+  /// Si oui, propose Reprendre / Ignorer (RM-07).
+  /// Retourne true si l'utilisateur a choisi de reprendre.
+  Future<bool> _checkForExistingDraft() async {
+    final client = _currentClientName;
+    final period = _selectedMonth;
+    if (client.isEmpty) return false;
+
+    List<InvoiceDraftSummary> existing;
+    try {
+      existing = await BillingService.getInvoiceDrafts(
+        clientName: client,
+        month: '${period.year}-${period.month.toString().padLeft(2, '0')}',
+      );
+    } catch (_) {
+      return false; // En cas d'erreur API, on n'interrompt pas le workflow
+    }
+
+    if (existing.isEmpty) return false;
+
+    final draft = existing.first;
+    if (!mounted) return false;
+
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Préparation en cours'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Une préparation existe pour ${draft.clientName ?? client}.'),
+            const SizedBox(height: 4),
+            Text('Mois : ${draft.month}   Total : ${draft.totalHt.toStringAsFixed(2)} €',
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+            const SizedBox(height: 12),
+            const Text('Que souhaitez-vous faire ?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('ignore'),
+            child: const Text('Ignorer'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop('resume'),
+            child: const Text('Reprendre'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'resume') {
+      await _restoreFromDraft(draft);
+      return true;
+    }
+    // 'ignore' ou fermeture : draft intact, on charge les missions brutes
+    return false;
+  }
+
+  /// Restaure les lignes de facturation depuis un draft existant.
+  Future<void> _restoreFromDraft(InvoiceDraftSummary draft) async {
+    if (!mounted) return;
+    setState(() => _loadingDraft = true);
+    try {
+      final result = await BillingService.fetchInvoiceDraftLines(
+        clientName: draft.clientName ?? _currentClientName,
+        periodMonth: DateTime(
+          int.parse(draft.month.split('-')[0]),
+          int.parse(draft.month.split('-')[1]),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _draftId = draft.draftId;
+        _draftKey = null; // sera regénéré au prochain autosave
+        _lineEditors.clear();
+        for (final line in result) {
+          _lineEditors.add(_EditableInvoiceLine(
+            mission: null,
+            originalLine: line.copy(),
+            currentLine: line.copy(),
+          ));
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de restaurer la préparation : $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingDraft = false);
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // AMI v1.3 — Vue Préparations en cours
+  // ---------------------------------------------------------------
+
+  Widget _buildPreparationsView(double spacing) {
+    return Padding(
+      padding: EdgeInsets.all(spacing),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Préparations en cours',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Actualiser',
+                onPressed: _loadDrafts,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Préparations sauvegardées, non encore finalisées.',
+            style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          Expanded(child: _buildDraftsList()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDraftsList() {
+    if (_loadingDrafts) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_draftsError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Color(0xFFB91C1C), size: 32),
+            const SizedBox(height: 8),
+            Text(_draftsError!, style: const TextStyle(color: Color(0xFFB91C1C))),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: _loadDrafts, child: const Text('Réessayer')),
+          ],
+        ),
+      );
+    }
+    if (_drafts.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_copy_outlined, size: 40, color: Color(0xFF9CA3AF)),
+            SizedBox(height: 8),
+            Text('Aucune préparation en cours.',
+                style: TextStyle(color: Color(0xFF6B7280))),
+          ],
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: _drafts.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final draft = _drafts[index];
+        return ListTile(
+          leading: const Icon(Icons.description_outlined, color: Color(0xFF1E3A8A)),
+          title: Text(draft.clientName ?? '(client inconnu)',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(
+            'Mois : ${draft.month}   •   Total : ${draft.totalHt.toStringAsFixed(2)} €',
+            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.play_arrow_outlined, size: 18),
+                label: const Text('Reprendre'),
+                onPressed: () async {
+                  await _restoreFromDraft(draft);
+                  if (mounted) _setActiveSection(BillingSection.creation);
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFB91C1C)),
+                tooltip: 'Supprimer',
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Supprimer la préparation ?'),
+                      content: Text(
+                        'La préparation de ${draft.clientName ?? 'ce client'} (${draft.month}) sera supprimée définitivement.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text('Annuler'),
+                        ),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFB91C1C),
+                          ),
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          child: const Text('Supprimer'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    try {
+                      await BillingService.deleteInvoiceDraft(draftId: draft.draftId);
+                      await _loadDrafts();
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Erreur : $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _handleCreateInvoice() async {
@@ -4510,6 +4990,7 @@ class _BillingPageState extends State<BillingPage> {
             Text('Mois : ${_monthLabel(_selectedMonth)}'),
             Text('Lignes : ${_lineEditors.length}'),
             Text('Total HT : ${_formatCurrency(_currentTotalHt)}'),
+            Text('Total TTC : ${_formatCurrency(_currentTotalTtc)}'),
           ],
         ),
         actions: [
@@ -5377,18 +5858,26 @@ class _BillingPageState extends State<BillingPage> {
         left.unitPrice == right.unitPrice &&
         left.quantity == right.quantity &&
         left.tvaRate == right.tvaRate &&
+        left.discount == right.discount &&
         (left.notes ?? '') == (right.notes ?? '');
   }
 
   String get _currentClientName => _clientInput.trim();
   double get _currentTotalHt =>
       _lineEditors.fold(0, (sum, editor) => sum + editor.currentLine.totalHt);
+  double get _currentTotalTtc =>
+      _lineEditors.fold(0, (sum, editor) => sum + editor.currentLine.totalTtc);
 
   bool get _hasRequiredInvoiceSettings =>
       _selectedClientPaymentTerm != null && _selectedCompanyBankAccount != null;
 
   bool get _canLoadMissions =>
       !_loadingMissions && _currentClientName.isNotEmpty;
+
+  bool get _canSaveDraft =>
+      !_savingDraftHeader &&
+      _currentClientName.isNotEmpty &&
+      _lineEditors.isNotEmpty;
 
   bool get _canGeneratePdf =>
       !_generatingPdf &&

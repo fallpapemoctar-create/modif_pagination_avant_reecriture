@@ -366,6 +366,7 @@ class BillingService {
     int? userId,
     String? userName,
     String? draftKey,
+    int? draftId,
   }) async {
     if (lines.isEmpty) {
       throw Exception('Aucune ligne à enregistrer.');
@@ -381,6 +382,7 @@ class BillingService {
       if (userId != null && userId > 0) 'user_id': userId,
       if (userName != null && userName.trim().isNotEmpty)
         'user_name': userName.trim(),
+      if (draftId != null && draftId > 0) 'draft_id': draftId,
     };
 
     final response = await http.post(
@@ -446,6 +448,165 @@ class BillingService {
   }
 
   static final DateFormat _periodFormatter = DateFormat('yyyy-MM-01');
+
+  // ---------------------------------------------------------------
+  // AMI v1.3 — Draft de préparation
+  // ---------------------------------------------------------------
+
+  /// Crée ou met à jour un draft de préparation.
+  /// Retourne le draft_id persisté.
+  static Future<int> saveInvoiceDraft({
+    int? draftId,
+    int? clientId,
+    required String clientName,
+    required DateTime periodMonth,
+    int? paymentConditionId,
+    int? bankAccountId,
+    double totalHt = 0.0,
+    int? userId,
+  }) async {
+    final payload = <String, dynamic>{
+      'month': DateFormat('yyyy-MM').format(periodMonth),
+      'client_name': clientName.trim(),
+      'total_ht': totalHt,
+      if (draftId != null && draftId > 0) 'draft_id': draftId,
+      if (clientId != null && clientId > 0) 'client_id': clientId,
+      if (paymentConditionId != null) 'payment_condition_id': paymentConditionId,
+      if (bankAccountId != null) 'bank_account_id': bankAccountId,
+      if (userId != null && userId > 0) 'user_id': userId,
+    };
+    final response = await http.post(
+      Uri.parse('${_baseUrl}save_invoice_draft.php'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Impossible de sauvegarder la préparation (${response.statusCode}).',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['success'] == true && decoded['draft_id'] is num) {
+      return (decoded['draft_id'] as num).toInt();
+    }
+    final message = decoded is Map && decoded['error'] is String
+        ? decoded['error'] as String
+        : 'Réponse inattendue du serveur.';
+    throw Exception(message);
+  }
+
+  /// Retourne la liste des préparations en cours (status='draft' par défaut).
+  static Future<List<InvoiceDraftSummary>> getInvoiceDrafts({
+    int? clientId,
+    String? clientName,
+    String? month,
+    String status = 'draft',
+  }) async {
+    final payload = <String, dynamic>{'status': status};
+    if (clientId != null && clientId > 0) payload['client_id'] = clientId;
+    if (clientName != null && clientName.trim().isNotEmpty) {
+      payload['client_name'] = clientName.trim();
+    }
+    if (month != null && month.trim().isNotEmpty) payload['month'] = month.trim();
+
+    final response = await http.post(
+      Uri.parse('${_baseUrl}get_invoice_drafts.php'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Impossible de charger les préparations (${response.statusCode}).',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['success'] == true) {
+      final raw = decoded['drafts'] as List? ?? const [];
+      return raw
+          .whereType<Map>()
+          .map((d) => InvoiceDraftSummary.fromJson(Map<String, dynamic>.from(d)))
+          .toList();
+    }
+    final message = decoded is Map && decoded['error'] is String
+        ? decoded['error'] as String
+        : 'Réponse inattendue du serveur.';
+    throw Exception(message);
+  }
+
+  /// Supprime un draft non finalisé.
+  static Future<void> deleteInvoiceDraft({required int draftId}) async {
+    final response = await http.post(
+      Uri.parse('${_baseUrl}delete_invoice_draft.php'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'draft_id': draftId}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Impossible de supprimer la préparation (${response.statusCode}).',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['success'] == true) return;
+    final message = decoded is Map && decoded['error'] is String
+        ? decoded['error'] as String
+        : 'Réponse inattendue du serveur.';
+    throw Exception(message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AMI v1.3 — Modèles draft
+// ---------------------------------------------------------------------------
+
+/// Résumé d'une préparation de facture (header).
+class InvoiceDraftSummary {
+  const InvoiceDraftSummary({
+    required this.draftId,
+    this.clientId,
+    this.clientName,
+    required this.month,
+    this.paymentConditionId,
+    this.bankAccountId,
+    required this.totalHt,
+    this.createdBy,
+    required this.status,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final int draftId;
+  final int? clientId;
+  final String? clientName;
+  final String month;
+  final int? paymentConditionId;
+  final int? bankAccountId;
+  final double totalHt;
+  final int? createdBy;
+  final String status;
+  final String? createdAt;
+  final String? updatedAt;
+
+  bool get isFinalized => status == 'finalized';
+
+  factory InvoiceDraftSummary.fromJson(Map<String, dynamic> json) {
+    return InvoiceDraftSummary(
+      draftId: (json['draft_id'] as num).toInt(),
+      clientId: json['client_id'] is num ? (json['client_id'] as num).toInt() : null,
+      clientName: json['client_name'] as String?,
+      month: (json['month'] as String? ?? ''),
+      paymentConditionId: json['payment_condition_id'] is num
+          ? (json['payment_condition_id'] as num).toInt()
+          : null,
+      bankAccountId: json['bank_account_id'] is num
+          ? (json['bank_account_id'] as num).toInt()
+          : null,
+      totalHt: json['total_ht'] is num ? (json['total_ht'] as num).toDouble() : 0.0,
+      createdBy: json['created_by'] is num ? (json['created_by'] as num).toInt() : null,
+      status: (json['status'] as String? ?? 'draft'),
+      createdAt: json['created_at'] as String?,
+      updatedAt: json['updated_at'] as String?,
+    );
+  }
 }
 
 class ClientInvoiceListResult {

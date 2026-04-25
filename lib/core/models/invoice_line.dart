@@ -5,19 +5,25 @@ class InvoiceLine {
     double? unitPrice,
     double? quantity,
     double? tvaRate,
+    double? discount,
     this.notes,
   })  : unitPrice = unitPrice ?? 0,
         quantity = quantity ?? 1,
-        tvaRate = tvaRate ?? 0;
+        tvaRate = tvaRate ?? 0,
+        discount = discount ?? 0;
 
   final String? missionRef;
   String designation;
   double unitPrice;
   double quantity;
   double tvaRate;
+  /// Réduction en pourcentage (0–100). Ex: 10.0 = 10 %.
+  double discount;
   String? notes;
 
-  double get totalHt => _roundCurrency(unitPrice * quantity);
+  double get totalHt => _roundCurrency(unitPrice * quantity * (1 - discount / 100));
+  double get unitPriceTtc => _roundCurrency(unitPrice * (1 + tvaRate / 100));
+  double get totalTtc => _roundCurrency(totalHt * (1 + tvaRate / 100));
 
   InvoiceLine copy() => InvoiceLine(
         designation: designation,
@@ -25,6 +31,7 @@ class InvoiceLine {
         unitPrice: unitPrice,
         quantity: quantity,
         tvaRate: tvaRate,
+        discount: discount,
         notes: notes,
       );
 
@@ -34,6 +41,7 @@ class InvoiceLine {
         'unit_price_ht': unitPrice,
         'quantity': quantity,
         'tva_rate': tvaRate,
+        'discount': discount,
         'total_ht': totalHt,
         'notes': notes,
       };
@@ -46,12 +54,14 @@ class InvoiceLine {
     final unit = _parseDouble(json['unit_price_ht'] ?? json['unit_price']);
     final quantityValue = _parseDouble(json['quantity'], 1);
     final tva = _parseDouble(json['tva_rate']);
+    final discountValue = _parseDouble(json['discount']);
     return InvoiceLine(
       designation: designationValue.isEmpty ? 'Ligne de facture' : designationValue,
       missionRef: missionRef?.isEmpty ?? true ? null : missionRef,
       unitPrice: unit,
       quantity: quantityValue <= 0 ? 1 : quantityValue,
       tvaRate: tva,
+      discount: discountValue < 0 ? 0 : discountValue,
       notes: notesValue.isEmpty ? null : notesValue,
     );
   }
