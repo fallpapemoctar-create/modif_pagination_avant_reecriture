@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/app_config.dart';
+import 'core/app_text_styles.dart';
 
 import 'screens/login_page.dart';
 import 'screens/home_page.dart';
@@ -39,10 +40,21 @@ class MyApp extends StatelessWidget {
         ),
         // Fond global en gris pâle
         scaffoldBackgroundColor: const Color(0xFFF6F6F6),
-        // Texte en couleur sombre pour un bon contraste
-        textTheme: ThemeData().textTheme.apply(
-          bodyColor: const Color(0xFF161616),
-          displayColor: const Color(0xFF161616),
+        // TextTheme centralisé — style Dolibarr
+        // Texte général 12-13 px | Tableaux 12 px | Titres 16-20 px | Menus 12-14 px
+        textTheme: const TextTheme(
+          // Corps
+          bodyLarge:   AppTextStyles.body,       // 13 px — contenu principal
+          bodyMedium:  AppTextStyles.body,       // 13 px — défaut Flutter
+          bodySmall:   AppTextStyles.bodySmall,  // 12 px — secondaire / notes
+          // Titres
+          titleLarge:  AppTextStyles.pageTitle,      // 20 px
+          titleMedium: AppTextStyles.sectionTitle,   // 16 px
+          titleSmall:  AppTextStyles.subTitle,       // 14 px
+          // Labels
+          labelLarge:  AppTextStyles.fieldLabel,     // 13 px bold
+          labelMedium: AppTextStyles.tableHeader,    // 12 px bold — en-têtes tableau
+          labelSmall:  AppTextStyles.badge,          // 11 px — badges
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFF8F9FA),

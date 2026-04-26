@@ -17,6 +17,7 @@ import '../services/language_service.dart';
 import '../services/mission_service.dart';
 import 'missions_table_page_arguments.dart';
 import 'billing_page.dart';
+import 'quote_edit_page.dart';
 
 class _AutocompleteEntry<T> {
   final T value;
@@ -2463,7 +2464,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     cells.add(
                       DataCell(
                         SizedBox(
-                          width: 210,
+                          width: 310,
                           child: Row(
                             children: [
                               TextButton.icon(
@@ -2477,6 +2478,32 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                                 label: const Text('Editer'),
                                 style: TextButton.styleFrom(
                                   foregroundColor: const Color(0xFF000091),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  minimumSize: const Size(0, 36),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => QuoteEditPage(
+                                        missionId: rowId,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.request_quote_outlined,
+                                  color: Color(0xFF0D6E3F),
+                                  size: 18,
+                                ),
+                                label: const Text('Devis'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF0D6E3F),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
                                     vertical: 4,

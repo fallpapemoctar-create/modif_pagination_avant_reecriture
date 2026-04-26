@@ -1,0 +1,207 @@
+<?php
+/**
+ * create_quote_from_mission.php
+ * AMI v1.4 — Module Devis
+ *
+ * Crée un devis pré-rempli depuis une mission existante (RM-01).
+ * Vérifie qu'aucun devis actif (draft/sent) n'existe déjà pour cette mission (RM-02).
+ *
+ * POST { mission_id: int, user_id: int }
+ * → 201 { quote_id: int, status: "draft_created" }
+ */
+
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/billing_helpers.php';
+
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Content-Type: application/json; charset=UTF-8");
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+function respond(int $status, array $payload): void {
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    respond(405, ['success' => false, 'error' => 'Méthode non autorisée']);
+}
+
+$input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) {
+    respond(400, ['success' => false, 'error' => 'Payload JSON invalide']);
+}
+
+$missionId = isset($input['mission_id']) ? (int) $input['mission_id'] : 0;
+$userId    = isset($input['user_id'])    ? (int) $input['user_id']    : null;
+
+if ($missionId <= 0) {
+    respond(400, ['success' => false, 'error' => 'mission_id requis']);
+}
+
+try {
+    // ---------------------------------------------------------------
+    // 1. Charger la mission
+    // ---------------------------------------------------------------
+    $stmtM = $pdo->prepare("
+        SELECT
+            m.rowid         AS mission_id,
+            m.ref           AS mission_ref,
+            m.fk_soc        AS client_id,
+            s.nom           AS client_name,
+            m.datemission,
+            m.dureemission,
+            m.description   AS commentaires,
+            p.label         AS produit_label,
+            p.price         AS produit_price,
+            p.tva_tx        AS produit_tva_tx
+        FROM llx_missionsplanet_mission m
+        LEFT JOIN llx_societe  s ON s.rowid = m.fk_soc
+        LEFT JOIN llx_product  p ON p.rowid = m.langue
+        WHERE m.rowid = :id
+        LIMIT 1
+    ");
+    $stmtM->execute([':id' => $missionId]);
+    $mission = $stmtM->fetch();
+
+    if (!$mission) {
+        respond(404, ['success' => false, 'error' => 'Mission introuvable']);
+    }
+
+    // ---------------------------------------------------------------
+    // 2. CT-09 — Vérifier que la mission n'est pas déjà facturée
+    // ---------------------------------------------------------------
+    $stmtBilled = $pdo->prepare("
+        SELECT invoice_number FROM tble_client_billed
+        WHERE mission_ref = :ref
+        LIMIT 1
+    ");
+    $stmtBilled->execute([':ref' => $mission['mission_ref']]);
+    if ($stmtBilled->fetchColumn()) {
+        respond(409, [
+            'success' => false,
+            'error'   => 'Cette mission est déjà facturée. Impossible de créer un devis.',
+            'code'    => 'MISSION_ALREADY_BILLED',
+        ]);
+    }
+
+    // ---------------------------------------------------------------
+    // 3. RM-02 — Vérifier l'absence de devis actif pour cette mission
+    // ---------------------------------------------------------------
+    $stmtCheck = $pdo->prepare("
+        SELECT id FROM invoice_draft
+        WHERE mission_id = :mid
+          AND status IN ('draft', 'sent')
+        LIMIT 1
+    ");
+    $stmtCheck->execute([':mid' => $missionId]);
+    $existing = $stmtCheck->fetchColumn();
+    if ($existing) {
+        respond(409, [
+            'success'  => false,
+            'error'    => 'Un devis actif existe déjà pour cette mission',
+            'quote_id' => (int) $existing,
+            'code'     => 'QUOTE_ALREADY_EXISTS',
+        ]);
+    }
+
+    // ---------------------------------------------------------------
+    // 3. Calculer quantité et prix unitaire (même règle que billing_page)
+    // ---------------------------------------------------------------
+    $dureeMins = 0;
+    if (!empty($mission['dureemission'])) {
+        $raw = trim($mission['dureemission']);
+        if (preg_match('/^(\d+):(\d+)/', $raw, $m2)) {
+            $dureeMins = (int)$m2[1] * 60 + (int)$m2[2];
+        } elseif (is_numeric($raw)) {
+            $dureeMins = (int)$raw;
+        }
+    }
+
+    // Quantize minutes → heures (paliers 15/30/60/ceil-15)
+    function quantizeMinutes(int $mins): float {
+        if ($mins <= 0)  return 0;
+        if ($mins <= 15) return 15;
+        if ($mins <= 30) return 30;
+        if ($mins <= 60) return 60;
+        return 15 * ceil($mins / 15);
+    }
+    $quantity  = $dureeMins > 0 ? round(quantizeMinutes($dureeMins) / 60, 4) : 1.0;
+    $unitPrice = $mission['produit_price'] !== null ? (float)$mission['produit_price'] : 0.0;
+    $tvaRate   = $mission['produit_tva_tx'] !== null ? (float)$mission['produit_tva_tx'] : 0.0;
+    $total     = round($unitPrice * $quantity, 2);
+
+    $description = $mission['produit_label'] ?? '';
+    if (!$description && !empty($mission['commentaires'])) {
+        $description = mb_substr($mission['commentaires'], 0, 255);
+    }
+
+    // Date de validité : 30 jours à partir d'aujourd'hui
+    $dateValidUntil = date('Y-m-d', strtotime('+30 days'));
+
+    // ---------------------------------------------------------------
+    // 4. Insérer le devis en transaction
+    // ---------------------------------------------------------------
+    $pdo->beginTransaction();
+
+    $stmtInsert = $pdo->prepare("
+        INSERT INTO invoice_draft
+            (client_id, client_name, mission_id, month, total_ht,
+             status, date_valid_until, created_by, created_at, updated_at)
+        VALUES
+            (:client_id, :client_name, :mission_id, :month, :total_ht,
+             'draft', :date_valid_until, :created_by, NOW(), NOW())
+    ");
+    $month = $mission['datemission']
+        ? substr($mission['datemission'], 0, 7)
+        : date('Y-m');
+
+    $stmtInsert->execute([
+        ':client_id'       => $mission['client_id'] ?: null,
+        ':client_name'     => $mission['client_name'] ?? null,
+        ':mission_id'      => $missionId,
+        ':month'           => $month,
+        ':total_ht'        => $total,
+        ':date_valid_until'=> $dateValidUntil,
+        ':created_by'      => $userId,
+    ]);
+    $quoteId = (int) $pdo->lastInsertId();
+
+    // Insérer la ligne de devis
+    $stmtLine = $pdo->prepare("
+        INSERT INTO invoice_draft_lines
+            (draft_id, mission_id, description, quantity, unit_price,
+             tva_rate, discount, total, sort_order, updated_at)
+        VALUES
+            (:draft_id, :mission_id, :description, :quantity, :unit_price,
+             :tva_rate, 0.00, :total, 0, NOW())
+    ");
+    $stmtLine->execute([
+        ':draft_id'    => $quoteId,
+        ':mission_id'  => $missionId,
+        ':description' => $description,
+        ':quantity'    => $quantity,
+        ':unit_price'  => $unitPrice,
+        ':tva_rate'    => $tvaRate,
+        ':total'       => $total,
+    ]);
+
+    $pdo->commit();
+
+    respond(201, [
+        'success'  => true,
+        'quote_id' => $quoteId,
+        'status'   => 'draft_created',
+    ]);
+
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('create_quote_from_mission error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'error' => 'Erreur serveur']);
+}

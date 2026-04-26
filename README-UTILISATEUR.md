@@ -79,6 +79,121 @@ Form-encodé :
 curl -X POST http://ami.yourbizapps.com/api/add_mission.php -d "interpreter_id=1&reference_devis=R001&montant_mission=100"
 ```
 
+---
+
+## Module Devis (AMI v1.4)
+
+Le module Devis permet de créer, modifier, suivre et convertir des devis commerciaux directement depuis les missions.
+
+### Accès rapide — depuis le tableau des missions
+
+1. Ouvrir le menu **Missions** (onglet principal).
+2. Sur la ligne d'une mission, cliquer sur le bouton **Devis** (icône 📋).
+3. Si aucun devis actif n'existe pour cette mission, un nouveau devis est créé automatiquement pré-rempli (client, référence mission, lignes de base).
+4. L'écran d'édition du devis s'ouvre.
+
+> **Règles :**
+> - Une mission déjà facturée ne peut pas être utilisée pour créer un devis (message d'erreur 409).
+> - Il ne peut exister qu'un seul devis en statut *brouillon* ou *envoyé* pour une même mission.
+
+---
+
+### Cycle de vie d'un devis
+
+```
+Mission → Devis (brouillon) → Envoyé → Accepté → Facturé
+                                      ↘ Rejeté
+                                      ↘ Expiré
+```
+
+| Statut | Libellé | Actions disponibles |
+|---|---|---|
+| `draft` | Brouillon | Modifier, Sauvegarder, Envoyer, Générer PDF |
+| `sent` | Envoyé | Marquer Accepté / Rejeté / Expiré, Générer PDF |
+| `accepted` | Accepté | Créer la facture, Générer PDF |
+| `rejected` | Rejeté | Dupliquer, Générer PDF |
+| `expired` | Expiré | Dupliquer, Générer PDF |
+| `accepted_converted` | Converti en facture | Lecture seule, Générer PDF |
+
+---
+
+### Écran d'édition du devis
+
+#### Champs affichés
+
+| Champ | Modifiable | Description |
+|---|---|---|
+| Client | Non (lecture seule) | Nom du client lié à la mission |
+| Mission | Non (lecture seule) | Référence de la mission source |
+| Statut | Via boutons | Statut actuel du devis |
+| Date de validité | Oui (si brouillon/envoyé) | Date limite de validité du devis |
+| Notes | Oui (si brouillon/envoyé) | Commentaires libres |
+| Lignes (désignation, quantité, P.U. HT, TVA %) | Oui (si brouillon/envoyé) | Détail des prestations |
+
+#### Boutons de l'AppBar
+
+| Bouton | Visible quand | Action |
+|---|---|---|
+| **Sauvegarder** | Brouillon ou Envoyé | Enregistre les modifications des lignes, notes, validité |
+| **PDF** | Toujours | Génère et télécharge le PDF du devis |
+| **Envoyer** | Brouillon | Passe le devis en statut *Envoyé* |
+| **···** (menu) | Brouillon ou Envoyé | Autres transitions de statut |
+| **Créer la facture** | Accepté | Convertit le devis en facture (vert) |
+| **Dupliquer** | Rejeté ou Expiré | Crée un nouveau devis à partir de la même mission |
+
+---
+
+### Générer le PDF d'un devis
+
+1. Ouvrir le devis (depuis l'onglet Devis ou depuis le tableau des missions).
+2. Cliquer sur **PDF** dans la barre d'actions.
+3. Le PDF est téléchargé automatiquement (navigateur web) ou envoyé vers l'imprimante/partage (application mobile/desktop).
+
+Le PDF contient :
+- En-tête : numéro de devis, statut, dates
+- Tableau des prestations : désignation, TVA %, P.U. HT, quantité, total HT
+- Totaux : Total HT et Total TTC
+- Notes éventuelles
+
+---
+
+### Envoyer le devis
+
+1. En statut **Brouillon**, cliquer sur **Envoyer**.
+2. Le statut passe à *Envoyé* immédiatement.
+3. Le devis reste modifiable en statut *Envoyé*.
+
+> L'envoi est un changement de statut dans l'application. La transmission par e-mail est manuelle (exporter le PDF puis l'envoyer au client).
+
+---
+
+### Convertir un devis accepté en facture
+
+1. Marquer le devis comme **Accepté** (via le menu ···).
+2. Le bouton **Créer la facture** (vert) apparaît.
+3. Cliquer sur **Créer la facture** : un numéro de facture est réservé et la facture est créée dans le module Facturation.
+4. Le devis passe en statut *Converti en facture* et devient lecture seule.
+
+---
+
+### Dupliquer un devis rejeté ou expiré
+
+1. Ouvrir le devis en statut *Rejeté* ou *Expiré*.
+2. Cliquer sur **Dupliquer**.
+3. Un nouveau devis *Brouillon* est créé pour la même mission.
+4. L'écran s'ouvre directement sur le nouveau devis.
+
+---
+
+### Onglet Devis — dans Facturation
+
+L'onglet **Devis** est accessible depuis le menu **Facturation** → sous-onglet **Devis**.
+
+- Un filtre permet d'afficher les devis par statut : *Brouillons*, *Envoyés*, *Acceptés*, *Rejetés*, *Expirés*, *Convertis*.
+- Cliquer sur un devis dans la liste ouvre l'écran d'édition.
+
+---
+
 ## Diagnostics & dépannage
 - Analyse statique : `flutter analyze`.
 - Logs serveur PHP : consulter les logs WAMP (ex. `C:\wamp64\logs` ou `php_error.log`).
