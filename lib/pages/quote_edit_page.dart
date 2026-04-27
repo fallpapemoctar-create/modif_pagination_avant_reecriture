@@ -12,6 +12,8 @@ import 'package:printing/printing.dart';
 import '../core/auth_manager.dart';
 import '../core/app_text_styles.dart';
 import '../core/models/quote.dart';
+import '../models/company_info.dart';
+import '../services/company_info_service.dart';
 import '../services/quote_service.dart';
 import '../utils/pdf_download_helper_stub.dart'
     if (dart.library.html) '../utils/pdf_download_helper_web.dart';
@@ -250,8 +252,40 @@ class _QuoteEditPageState extends State<QuoteEditPage> {
     }
   }
 
+  // ---- Helpers PDF ----
+  String _fmtCurrency(NumberFormat fmt, double value) {
+    return fmt
+        .format(value)
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u202F', ' ');
+  }
+
+  double _pdfFs(double size) => size * 0.8;
+
   Future<Uint8List> _buildQuotePdfBytes(Quote quote) async {
-    final fmt = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    // --- Polices Open Sans (supportent €) ---
+    final fontRegular = await PdfGoogleFonts.openSansRegular();
+    final fontBold = await PdfGoogleFonts.openSansBold();
+    final theme = pw.ThemeData.withFont(base: fontRegular, bold: fontBold);
+
+    // --- Logo ---
+    pw.MemoryImage? logoImage;
+    try {
+      final data = await rootBundle.load('assets/logo.png');
+      logoImage = pw.MemoryImage(data.buffer.asUint8List());
+    } catch (_) {
+      logoImage = null;
+    }
+
+    // --- Infos société ---
+    CompanyInfo companyInfo;
+    try {
+      companyInfo = await CompanyInfoService.fetch();
+    } catch (_) {
+      companyInfo = CompanyInfo.fallback();
+    }
+
+    final fmt = NumberFormat.currency(locale: 'fr_FR', symbol: '\u20ac', decimalDigits: 2);
     final today = DateFormat('dd/MM/yyyy').format(DateTime.now());
     final lines = quote.lines.isEmpty ? _collectLines() : quote.lines;
     double totalHt = 0;
@@ -260,80 +294,201 @@ class _QuoteEditPageState extends State<QuoteEditPage> {
       totalHt += l.totalHt;
       totalTtc += l.totalTtc;
     }
-    final doc = pw.Document();
+
+    final doc = pw.Document(theme: theme);
     final accent = PdfColor.fromHex('#000091');
+    final borderColor = PdfColor.fromHex('#E5E7EB');
     final grey = PdfColor.fromHex('#6B7280');
-    doc.addPage(pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(36),
-      build: (ctx) => [
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('DEVIS',
-                      style: pw.TextStyle(
-                          fontSize: 22,
-                          fontWeight: pw.FontWeight.bold,
-                          color: accent)),
-                  pw.SizedBox(height: 4),
-                  pw.Text('#${quote.id}  •  ${Quote.statusLabel(quote.status)}',
-                      style: pw.TextStyle(fontSize: 12, color: grey)),
-                ],
-              ),
-            ),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text('Date : $today',
-                    style: pw.TextStyle(fontSize: 11)),
-                if (quote.dateValidUntil != null)
-                  pw.Text('Valable : ${quote.dateValidUntil}',
-                      style: pw.TextStyle(fontSize: 11)),
-              ],
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 16),
-        if (quote.clientName != null)
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
+
+    // --- Carte société (Émetteur) ---
+    final companyLines = <String>[];
+    final name = companyInfo.name.trim();
+    if (name.isNotEmpty) companyLines.add(name);
+    companyLines.addAll(companyInfo.addressLines);
+    final siret = companyInfo.siret.trim();
+    if (siret.isNotEmpty) companyLines.add('SIRET : $siret');
+    final phone = companyInfo.phone.trim();
+    if (phone.isNotEmpty) companyLines.add('Tél. : $phone');
+    final email = companyInfo.email.trim();
+    if (email.isNotEmpty) companyLines.add('Email : $email');
+
+    final companyCard = companyLines.isEmpty
+        ? null
+        : pw.Container(
+            padding: const pw.EdgeInsets.all(12),
             decoration: pw.BoxDecoration(
-              border: pw.Border.all(
-                  color: PdfColor.fromHex('#E5E7EB'), width: 0.5),
-              borderRadius: pw.BorderRadius.circular(4),
+              color: PdfColor.fromHex('#F9FAFB'),
+              borderRadius: pw.BorderRadius.circular(8),
+              border: pw.Border.all(color: borderColor, width: 0.5),
             ),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Client',
+                pw.Text('Émetteur',
                     style: pw.TextStyle(
-                        fontSize: 10,
-                        color: grey,
-                        fontWeight: pw.FontWeight.bold)),
+                        fontWeight: pw.FontWeight.bold,
+                        color: accent,
+                        fontSize: _pdfFs(12))),
                 pw.SizedBox(height: 4),
-                pw.Text(quote.clientName!,
+                ...companyLines.asMap().entries.map(
+                  (e) => pw.Text(
+                    e.value,
                     style: pw.TextStyle(
-                        fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                if (quote.missionRef != null)
-                  pw.Text('Mission : ${quote.missionRef}',
-                      style:
-                          pw.TextStyle(fontSize: 10, color: grey)),
+                      fontSize: _pdfFs(e.key == 0 ? 11.6 : 11),
+                      fontWeight: e.key == 0
+                          ? pw.FontWeight.bold
+                          : pw.FontWeight.normal,
+                    ),
+                  ),
+                ),
               ],
             ),
+          );
+
+    // --- Carte client (Destinataire) ---
+    final clientCard = pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex('#FDF2F8'),
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(
+            color: PdfColor.fromHex('#FBCFE8'), width: 0.5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text('Destinataire',
+              style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#BE185D'),
+                  fontSize: _pdfFs(12))),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            quote.clientName ?? '(client inconnu)',
+            style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: _pdfFs(11.6)),
           ),
+          if (quote.missionRef != null) ...
+            [
+              pw.SizedBox(height: 2),
+              pw.Text('Mission : ${quote.missionRef}',
+                  style: pw.TextStyle(
+                      fontSize: _pdfFs(11), color: grey)),
+            ],
+        ],
+      ),
+    );
+
+    // --- Carte meta devis ---
+    final metaCard = pw.Container(
+      constraints: const pw.BoxConstraints(maxWidth: 220),
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex('#EEF2FF'),
+        borderRadius: pw.BorderRadius.circular(10),
+        border: pw.Border.all(
+            color: PdfColor.fromHex('#C7D2FE'), width: 0.5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Devis #${quote.id}',
+            style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: _pdfFs(11.6),
+                color: accent),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'Statut : ${Quote.statusLabel(quote.status)}',
+            style: pw.TextStyle(fontSize: _pdfFs(9.5)),
+          ),
+          pw.SizedBox(height: 2),
+          pw.Text(
+            'Date : $today',
+            style: pw.TextStyle(fontSize: _pdfFs(9.5)),
+          ),
+          if (quote.dateValidUntil != null) ...
+            [
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Valable jusqu\'au : ${quote.dateValidUntil}',
+                style: pw.TextStyle(fontSize: _pdfFs(9.5)),
+              ),
+            ],
+        ],
+      ),
+    );
+
+    // --- Lignes tableau ---
+    final tableHeaders = ['Désignation', 'TVA %', 'P.U. HT', 'Qté', 'Total HT'];
+    final tableData = lines
+        .map((l) => [
+              l.designation,
+              l.tvaRate <= 0
+                  ? '0 %'
+                  : '${l.tvaRate.toStringAsFixed(l.tvaRate == l.tvaRate.roundToDouble() ? 0 : 2)} %',
+              _fmtCurrency(fmt, l.unitPrice),
+              l.quantity.toStringAsFixed(
+                  l.quantity == l.quantity.roundToDouble() ? 0 : 2),
+              _fmtCurrency(fmt, l.totalHt),
+            ])
+        .toList();
+
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(32, 32, 32, 40),
+      build: (ctx) => [
+        // Ligne 1 : logo + meta card
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: logoImage == null
+                  ? pw.SizedBox()
+                  : pw.Align(
+                      alignment: pw.Alignment.centerLeft,
+                      child: pw.Container(
+                        margin: const pw.EdgeInsets.only(bottom: 8),
+                        height: 48,
+                        child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                      ),
+                    ),
+            ),
+            pw.SizedBox(width: 16),
+            metaCard,
+          ],
+        ),
+        pw.SizedBox(height: 12),
+        // Ligne 2 : société + client
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            if (companyCard != null) ...
+              [
+                pw.Expanded(flex: 3, child: companyCard),
+                pw.SizedBox(width: 14),
+              ],
+            pw.Expanded(flex: 3, child: clientCard),
+          ],
+        ),
         pw.SizedBox(height: 16),
+        // Tableau des lignes
         pw.TableHelper.fromTextArray(
+          headers: tableHeaders,
+          data: tableData,
+          border: pw.TableBorder.symmetric(
+            inside: pw.BorderSide(color: borderColor, width: 0.25),
+            outside: pw.BorderSide(color: borderColor, width: 0.5),
+          ),
           headerStyle: pw.TextStyle(
               fontWeight: pw.FontWeight.bold,
-              fontSize: 10,
+              fontSize: _pdfFs(10.5),
               color: PdfColors.white),
-          headerDecoration:
-              pw.BoxDecoration(color: accent),
-          cellStyle: const pw.TextStyle(fontSize: 10),
+          headerDecoration: pw.BoxDecoration(color: accent),
+          cellStyle: pw.TextStyle(fontSize: _pdfFs(10.5)),
           cellAlignments: {
             0: pw.Alignment.centerLeft,
             1: pw.Alignment.center,
@@ -341,56 +496,89 @@ class _QuoteEditPageState extends State<QuoteEditPage> {
             3: pw.Alignment.centerRight,
             4: pw.Alignment.centerRight,
           },
-          headers: [
-            'Désignation',
-            'TVA %',
-            'P.U. HT',
-            'Qté',
-            'Total HT'
-          ],
-          data: lines
-              .map((l) => [
-                    l.designation,
-                    '${l.tvaRate.toStringAsFixed(1)} %',
-                    fmt.format(l.unitPrice),
-                    l.quantity.toStringAsFixed(2),
-                    fmt.format(l.totalHt),
-                  ])
-              .toList(),
         ),
-        pw.SizedBox(height: 12),
+        pw.SizedBox(height: 14),
+        // Totaux
         pw.Align(
           alignment: pw.Alignment.centerRight,
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text('Total HT : ${fmt.format(totalHt)}',
-                  style: pw.TextStyle(
-                      fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 3),
-              pw.Text('Total TTC : ${fmt.format(totalTtc)}',
-                  style: pw.TextStyle(
-                      fontSize: 12,
-                      fontWeight: pw.FontWeight.bold,
-                      color: accent)),
-            ],
+          child: pw.Container(
+            width: 210,
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: borderColor, width: 0.5),
+            ),
+            child: pw.Column(
+              children: [
+                _buildPdfTotalRowQ(
+                    label: 'Total HT',
+                    value: _fmtCurrency(fmt, totalHt),
+                    accent: accent,
+                    highlighted: false),
+                _buildPdfTotalRowQ(
+                    label: 'Total TTC',
+                    value: _fmtCurrency(fmt, totalTtc),
+                    accent: accent,
+                    highlighted: true),
+              ],
+            ),
           ),
         ),
+        // Notes
         if (quote.notes != null && quote.notes!.isNotEmpty) ...
           [
             pw.SizedBox(height: 16),
             pw.Text('Notes',
                 style: pw.TextStyle(
-                    fontSize: 10,
+                    fontSize: _pdfFs(10),
                     color: grey,
                     fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 4),
             pw.Text(quote.notes!,
-                style: const pw.TextStyle(fontSize: 10)),
+                style: pw.TextStyle(fontSize: _pdfFs(10))),
           ],
       ],
     ));
     return doc.save();
+  }
+
+  pw.Widget _buildPdfTotalRowQ({
+    required String label,
+    required String value,
+    required PdfColor accent,
+    required bool highlighted,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: pw.BoxDecoration(
+        color: highlighted ? PdfColor.fromHex('#EEF2FF') : null,
+        border: highlighted
+            ? null
+            : const pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(
+                    color: PdfColor(0.9, 0.9, 0.9),
+                    width: 0.25,
+                  ),
+                ),
+              ).border,
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label,
+              style: pw.TextStyle(
+                  fontSize: _pdfFs(highlighted ? 11 : 10),
+                  fontWeight: highlighted
+                      ? pw.FontWeight.bold
+                      : pw.FontWeight.normal,
+                  color: highlighted ? accent : null)),
+          pw.Text(value,
+              style: pw.TextStyle(
+                  fontSize: _pdfFs(highlighted ? 11 : 10),
+                  fontWeight: pw.FontWeight.bold,
+                  color: highlighted ? accent : null)),
+        ],
+      ),
+    );
   }
 
   // ---- Dupliquer un devis rejeté/expiré (RM-06) ----

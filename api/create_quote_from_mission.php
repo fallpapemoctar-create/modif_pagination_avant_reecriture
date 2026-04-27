@@ -52,15 +52,20 @@ try {
     $stmtM = $pdo->prepare("
         SELECT
             m.rowid         AS mission_id,
-            m.ref           AS mission_ref,
-            m.fk_soc        AS client_id,
-            s.nom           AS client_name,
+            m.ref               AS mission_ref,
+            m.fk_soc            AS client_id,
+            s.nom               AS client_name,
             m.datemission,
             m.dureemission,
-            m.description   AS commentaires,
-            p.label         AS produit_label,
-            p.price         AS produit_price,
-            p.tva_tx        AS produit_tva_tx
+            m.heuredebutmission,
+            m.heurefinmission,
+            m.description       AS commentaires,
+            m.nom_demandeur,
+            m.prenom_demandeur,
+            p.label             AS produit_label,
+            p.ref               AS produit_ref,
+            p.price             AS produit_price,
+            p.tva_tx            AS produit_tva_tx
         FROM llx_missionsplanet_mission m
         LEFT JOIN llx_societe  s ON s.rowid = m.fk_soc
         LEFT JOIN llx_product  p ON p.rowid = m.langue
@@ -137,10 +142,59 @@ try {
     $tvaRate   = $mission['produit_tva_tx'] !== null ? (float)$mission['produit_tva_tx'] : 0.0;
     $total     = round($unitPrice * $quantity, 2);
 
-    $description = $mission['produit_label'] ?? '';
+    $description = $mission['produit_label'] ?? $mission['produit_ref'] ?? '';
     if (!$description && !empty($mission['commentaires'])) {
         $description = mb_substr($mission['commentaires'], 0, 255);
     }
+    if (!$description) {
+        $description = 'Mission';
+    }
+
+    // Construire la désignation complète (même logique que billing_page _designationFor)
+    $parts = [$description];
+
+    // Date
+    $dateMission = $mission['datemission'] ?? null;
+    if ($dateMission) {
+        $d = DateTime::createFromFormat('Y-m-d H:i:s', $dateMission)
+          ?: DateTime::createFromFormat('Y-m-d', substr($dateMission, 0, 10));
+        $parts[] = 'Date : ' . ($d ? $d->format('d/m/Y') : '-');
+    } else {
+        $parts[] = 'Date : -';
+    }
+
+    // Heure début – fin
+    $hDebut = $mission['heuredebutmission'] ?? null;
+    $hFin   = $mission['heurefinmission']   ?? null;
+    if ($hDebut || $hFin) {
+        $fmt = function(?string $h): string {
+            if (!$h) return '';
+            // Extraire HH:MM depuis datetime ou time
+            $t = strtotime($h);
+            return $t !== false ? date('H:i', $t) : substr($h, 0, 5);
+        };
+        $hLabel = trim($fmt($hDebut) . ($hFin ? ' - ' . $fmt($hFin) : ''));
+        $parts[] = 'Heure : ' . ($hLabel ?: '-');
+    } else {
+        $parts[] = 'Heure : -';
+    }
+
+    // Durée
+    $durLabel = '-';
+    if ($dureeMins > 0) {
+        $durLabel = ($dureeMins % 60 === 0)
+            ? (($dureeMins / 60) . 'h')
+            : ($dureeMins . ' min');
+    }
+    $parts[] = 'Durée : ' . $durLabel;
+
+    // Demandeur
+    $prenom = trim((string)($mission['prenom_demandeur'] ?? ''));
+    $nom    = trim((string)($mission['nom_demandeur']    ?? ''));
+    $demandeur = trim("$prenom $nom");
+    $parts[] = 'Demandeur : ' . ($demandeur ?: '-');
+
+    $description = implode("\n", $parts);
 
     // Date de validité : 30 jours à partir d'aujourd'hui
     $dateValidUntil = date('Y-m-d', strtotime('+30 days'));
