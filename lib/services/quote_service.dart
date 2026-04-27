@@ -123,7 +123,7 @@ class QuoteService {
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
         'quote_id': quoteId,
-        if (userId != null) 'user_id': userId,
+        'user_id': ?userId,
       }),
     );
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;

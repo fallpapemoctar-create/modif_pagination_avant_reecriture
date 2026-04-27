@@ -4948,7 +4948,15 @@ class _BillingPageState extends State<BillingPage> {
                               style: TextStyle(
                                   fontWeight: FontWeight.w700, fontSize: 18),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 6),
+                            if (_quotesTotal > 0)
+                              Text(
+                                '($_quotesTotal)',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF6B7280)),
+                              ),
+                            const SizedBox(width: 8),
                             _buildQuotesStatusFilter(),
                             const Spacer(),
                             IconButton(

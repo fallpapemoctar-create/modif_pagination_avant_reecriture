@@ -471,8 +471,8 @@ class BillingService {
       'total_ht': totalHt,
       if (draftId != null && draftId > 0) 'draft_id': draftId,
       if (clientId != null && clientId > 0) 'client_id': clientId,
-      if (paymentConditionId != null) 'payment_condition_id': paymentConditionId,
-      if (bankAccountId != null) 'bank_account_id': bankAccountId,
+      'payment_condition_id': ?paymentConditionId,
+      'bank_account_id': ?bankAccountId,
       if (userId != null && userId > 0) 'user_id': userId,
     };
     final response = await http.post(
