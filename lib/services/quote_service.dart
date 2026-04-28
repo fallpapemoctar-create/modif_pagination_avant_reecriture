@@ -28,6 +28,12 @@ class QuoteService {
       final quoteId = decoded['quote_id'] as int;
       return getQuote(quoteId);
     }
+    // Devis actif déjà existant → ouvrir le devis existant
+    if (response.statusCode == 409 &&
+        decoded['code'] == 'QUOTE_ALREADY_EXISTS') {
+      final quoteId = decoded['quote_id'] as int;
+      return getQuote(quoteId);
+    }
     throw Exception(decoded['error'] ?? 'Erreur lors de la création du devis');
   }
 

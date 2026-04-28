@@ -58,17 +58,17 @@ try {
             m.datemission,
             m.dureemission,
             m.heuredebutmission,
-            m.heurefinmission,
             m.description       AS commentaires,
-            m.nom_demandeur,
-            m.prenom_demandeur,
+            socp.lastname       AS nom_demandeur,
+            socp.firstname      AS prenom_demandeur,
             p.label             AS produit_label,
             p.ref               AS produit_ref,
             p.price             AS produit_price,
             p.tva_tx            AS produit_tva_tx
         FROM llx_missionsplanet_mission m
-        LEFT JOIN llx_societe  s ON s.rowid = m.fk_soc
-        LEFT JOIN llx_product  p ON p.rowid = m.langue
+        LEFT JOIN llx_societe   s    ON s.rowid    = m.fk_soc
+        LEFT JOIN llx_product   p    ON p.rowid    = m.langue
+        LEFT JOIN llx_socpeople socp ON socp.rowid = m.contactdemandeur
         WHERE m.rowid = :id
         LIMIT 1
     ");
@@ -163,24 +163,23 @@ try {
         $parts[] = 'Date : -';
     }
 
-    // Heure début – fin
+    // Heure début – fin (calculée depuis heuredebutmission + dureemission)
     $hDebut = $mission['heuredebutmission'] ?? null;
-    $hFin   = $mission['heurefinmission']   ?? null;
-    if ($hDebut || $hFin) {
-        $fmt = function(?string $h): string {
-            if (!$h) return '';
-            // Extraire HH:MM depuis datetime ou time
-            $t = strtotime($h);
-            return $t !== false ? date('H:i', $t) : substr($h, 0, 5);
-        };
-        $hLabel = trim($fmt($hDebut) . ($hFin ? ' - ' . $fmt($hFin) : ''));
-        $parts[] = 'Heure : ' . ($hLabel ?: '-');
-    } else {
-        $parts[] = 'Heure : -';
+    $hLabel = '-';
+    if ($hDebut) {
+        $tDebut = strtotime($hDebut);
+        $hDebutStr = $tDebut !== false ? date('H:i', $tDebut) : substr($hDebut, 0, 5);
+        if ($dureeMins > 0 && $tDebut !== false) {
+            $tFin = $tDebut + ($dureeMins * 60);
+            $hLabel = $hDebutStr . ' - ' . date('H:i', $tFin);
+        } else {
+            $hLabel = $hDebutStr;
+        }
     }
+    $parts[] = 'Heure : ' . $hLabel;
 
     // Durée
-    $durLabel = '-';
+    $durLabel = '';
     if ($dureeMins > 0) {
         $durLabel = ($dureeMins % 60 === 0)
             ? (($dureeMins / 60) . 'h')
