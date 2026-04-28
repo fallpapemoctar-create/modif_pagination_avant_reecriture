@@ -46,7 +46,11 @@ class QuoteService {
     final response = await http.get(uri);
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200 && decoded['success'] == true) {
-      return Quote.fromJson(decoded['quote'] as Map<String, dynamic>);
+      final quoteData = Map<String, dynamic>.from(
+          decoded['quote'] as Map<String, dynamic>);
+      // Les lignes sont au niveau racine de la réponse, pas dans 'quote'
+      quoteData['lines'] = decoded['lines'] ?? [];
+      return Quote.fromJson(quoteData);
     }
     throw Exception(decoded['error'] ?? 'Devis introuvable');
   }
