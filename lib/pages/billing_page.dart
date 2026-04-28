@@ -669,7 +669,7 @@ class _BillingPageState extends State<BillingPage> {
               ButtonSegment<BillingSection>(
                 value: BillingSection.preparations,
                 icon: Icon(Icons.folder_copy_outlined),
-                label: Text('Préparations'),
+                label: Text('Factures & Devis initiés et non terminés'),
               ),
             ],
             selected: <BillingSection>{_activeSection},
@@ -767,7 +767,7 @@ class _BillingPageState extends State<BillingPage> {
                 ),
                 _SidebarEntry(
                   icon: Icons.folder_copy_outlined,
-                  label: 'Préparations',
+                  label: 'Factures & Devis initiés et non terminés',
                   selected: _activeSection == BillingSection.preparations,
                   onTap: () => _setActiveSection(BillingSection.preparations),
                   collapsed: collapsed,
@@ -4893,7 +4893,7 @@ class _BillingPageState extends State<BillingPage> {
           children: [
             TabBar(
               tabs: const [
-                Tab(text: 'Préparations'),
+                Tab(text: 'Factures initiées'),
                 Tab(text: 'Devis'),
               ],
               labelColor: const Color(0xFF000091),
@@ -4912,7 +4912,7 @@ class _BillingPageState extends State<BillingPage> {
                         Row(
                           children: [
                             const Text(
-                              'Préparations en cours',
+                              'Factures initiées et non terminées',
                               style: TextStyle(
                                   fontWeight: FontWeight.w700, fontSize: 18),
                             ),
@@ -4926,7 +4926,7 @@ class _BillingPageState extends State<BillingPage> {
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'Préparations sauvegardées, non encore finalisées.',
+                          'Factures et devis initiés, sauvegardés mais non encore finalisés.',
                           style:
                               TextStyle(color: Color(0xFF6B7280), fontSize: 13),
                         ),

@@ -376,6 +376,24 @@ class _QuoteEditPageState extends State<QuoteEditPage> {
                   style: pw.TextStyle(
                       fontSize: _pdfFs(11), color: grey)),
             ],
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Statut : ${Quote.statusLabel(quote.status)}',
+            style: pw.TextStyle(fontSize: _pdfFs(9.5), color: grey),
+          ),
+          pw.SizedBox(height: 2),
+          pw.Text(
+            'Date : $today',
+            style: pw.TextStyle(fontSize: _pdfFs(9.5), color: grey),
+          ),
+          if (quote.dateValidUntil != null) ...
+            [
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Valable jusqu\'au : ${quote.dateValidUntil}',
+                style: pw.TextStyle(fontSize: _pdfFs(9.5), color: grey),
+              ),
+            ],
         ],
       ),
     );
@@ -400,24 +418,6 @@ class _QuoteEditPageState extends State<QuoteEditPage> {
                 fontSize: _pdfFs(11.6),
                 color: accent),
           ),
-          pw.SizedBox(height: 4),
-          pw.Text(
-            'Statut : ${Quote.statusLabel(quote.status)}',
-            style: pw.TextStyle(fontSize: _pdfFs(9.5)),
-          ),
-          pw.SizedBox(height: 2),
-          pw.Text(
-            'Date : $today',
-            style: pw.TextStyle(fontSize: _pdfFs(9.5)),
-          ),
-          if (quote.dateValidUntil != null) ...
-            [
-              pw.SizedBox(height: 2),
-              pw.Text(
-                'Valable jusqu\'au : ${quote.dateValidUntil}',
-                style: pw.TextStyle(fontSize: _pdfFs(9.5)),
-              ),
-            ],
         ],
       ),
     );
@@ -984,14 +984,10 @@ class _QuoteHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Text('Devis #${quote.id}', style: AppTextStyles.pageTitle),
-                  const SizedBox(width: 12),
-                  statusBadge,
-                ],
-              ),
+              // Titre
+              Text('Devis #${quote.id}', style: AppTextStyles.pageTitle),
               const SizedBox(height: 4),
+              // Destinataire
               if (quote.clientName != null)
                 Text(quote.clientName!,
                     style: AppTextStyles.subTitle
@@ -1000,10 +996,24 @@ class _QuoteHeader extends StatelessWidget {
                 Text('Mission : ${quote.missionRef}',
                     style: AppTextStyles.bodySmall
                         .copyWith(color: const Color(0xFF6B7280))),
-              if (quote.dateValidUntil != null)
-                Text('Valable jusqu\'au : ${quote.dateValidUntil}',
-                    style: AppTextStyles.bodySmall
-                        .copyWith(color: const Color(0xFF6B7280))),
+              const SizedBox(height: 6),
+              // Statut + infos dates sous le destinataire
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  statusBadge,
+                  if (quote.dateValidUntil != null)
+                    Text('Valable jusqu\'au : ${quote.dateValidUntil}',
+                        style: AppTextStyles.bodySmall
+                            .copyWith(color: const Color(0xFF6B7280))),
+                  if (quote.createdAt != null)
+                    Text('Créé le : ${quote.createdAt!.substring(0, 10)}',
+                        style: AppTextStyles.bodySmall
+                            .copyWith(color: const Color(0xFF9CA3AF))),
+                ],
+              ),
             ],
           ),
         ),

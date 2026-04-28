@@ -87,6 +87,7 @@ try {
     // 3. Réserver un numéro de facture (format FAC-YYYYMM-NNN)
     // ---------------------------------------------------------------
     ensureClientBillingTable($pdo);
+    ensureClientInvoiceLinesTable($pdo);
 
     $month = $quote['month'] ?? date('Y-m');
     [$year, $mon] = explode('-', $month . '-01');
@@ -122,7 +123,6 @@ try {
     // ---------------------------------------------------------------
     // 5. Créer l'entrée dans tble_client_billed
     // ---------------------------------------------------------------
-    ensureClientInvoiceLinesTable($pdo);
 
     $missionRef = $quote['mission_id'] ? (function() use ($pdo, $quote): string {
         $s = $pdo->prepare("SELECT ref FROM llx_missionsplanet_mission WHERE rowid = :id LIMIT 1");
@@ -157,11 +157,11 @@ try {
     $stmtLine = $pdo->prepare("
         INSERT INTO tble_client_invoice_lines
             (invoice_id, invoice_number, client_name, mission_ref,
-             designation, unit_price, quantity, tva_rate, discount,
+             designation, unit_price_ht, quantity, tva_rate,
              total_ht, sort_order, created_at, updated_at)
         VALUES
             (:invoice_id, :invoice_number, :client_name, :mission_ref,
-             :designation, :unit_price, :quantity, :tva_rate, :discount,
+             :designation, :unit_price, :quantity, :tva_rate,
              :total_ht, :sort_order, NOW(), NOW())
     ");
     foreach ($lines as $i => $line) {
@@ -178,7 +178,6 @@ try {
             ':unit_price'     => (float)$line['unit_price'],
             ':quantity'       => (float)$line['quantity'],
             ':tva_rate'       => (float)$line['tva_rate'],
-            ':discount'       => (float)$line['discount'],
             ':total_ht'       => $lineHt,
             ':sort_order'     => (int)($line['sort_order'] ?? $i),
         ]);
