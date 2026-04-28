@@ -283,6 +283,8 @@ class _BillingPageState extends State<BillingPage> {
 
   List<ClientInvoiceSummary> _invoices = [];
   bool _loadingInvoices = false;
+  String _invoiceSortColumn = 'invoiceNumber';
+  bool _invoiceSortAscending = false;
   int _invoicePage = 1;
   final int _invoicePageSize = 25;
   int _invoiceTotal = 0;
@@ -2006,6 +2008,42 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
+  Widget _buildSortHeader(String label, String column, {bool alignRight = false}) {
+    final isActive = _invoiceSortColumn == column;
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: () => setState(() {
+        if (_invoiceSortColumn == column) {
+          _invoiceSortAscending = !_invoiceSortAscending;
+        } else {
+          _invoiceSortColumn = column;
+          _invoiceSortAscending = true;
+        }
+      }),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: isActive ? const Color(0xFF2563EB) : null,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(
+            isActive
+                ? (_invoiceSortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                : Icons.unfold_more,
+            size: 14,
+            color: isActive ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInvoiceDesktopTable(List<ClientInvoiceSummary> invoices) {
     final selectedInvoiceNumber = _selectedInvoice?.invoiceNumber;
     return Card(
@@ -2023,59 +2061,41 @@ class _BillingPageState extends State<BillingPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             color: const Color(0xFFF8FAFC),
             child: Row(
-              children: const [
+              children: [
                 Expanded(
                   flex: 18,
-                  child: Text(
-                    'N° facture',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                  child: _buildSortHeader('N° facture', 'invoiceNumber'),
                 ),
                 Expanded(
                   flex: 19,
-                  child: Text(
-                    'Client',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                  child: _buildSortHeader('Client', 'client'),
                 ),
                 Expanded(
                   flex: 15,
-                  child: Text(
-                    'Mois',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                  child: _buildSortHeader('Mois', 'month'),
                 ),
                 Expanded(
                   flex: 13,
                   child: Padding(
-                    padding: EdgeInsets.only(right: 24),
+                    padding: const EdgeInsets.only(right: 24),
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child: Text(
-                        'Total HT',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                      child: _buildSortHeader('Total HT', 'totalHt', alignRight: true),
                     ),
                   ),
                 ),
                 Expanded(
                   flex: 13,
                   child: Padding(
-                    padding: EdgeInsets.only(left: 24),
-                    child: Text(
-                      'Statut',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    padding: const EdgeInsets.only(left: 24),
+                    child: _buildSortHeader('Statut', 'status'),
                   ),
                 ),
                 Expanded(
                   flex: 13,
-                  child: Text(
-                    'Date création',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                  child: _buildSortHeader('Date création', 'createdAt'),
                 ),
-                Expanded(
+                const Expanded(
                   flex: 10,
                   child: Align(
                     alignment: Alignment.centerRight,
@@ -2536,7 +2556,36 @@ class _BillingPageState extends State<BillingPage> {
           ].join(' ').toLowerCase();
           return haystack.contains(normalizedQuery);
         })
-        .toList(growable: false);
+        .toList(growable: true)
+      ..sort((a, b) {
+        int cmp;
+        switch (_invoiceSortColumn) {
+          case 'client':
+            cmp = a.clientName.toLowerCase().compareTo(b.clientName.toLowerCase());
+            break;
+          case 'month':
+            final da = a.periodMonth ?? a.billedAt ?? DateTime(0);
+            final db = b.periodMonth ?? b.billedAt ?? DateTime(0);
+            cmp = da.compareTo(db);
+            break;
+          case 'totalHt':
+            final ta = a.invoiceTotalHt > 0 ? a.invoiceTotalHt : a.amountHt;
+            final tb = b.invoiceTotalHt > 0 ? b.invoiceTotalHt : b.amountHt;
+            cmp = ta.compareTo(tb);
+            break;
+          case 'status':
+            cmp = _invoiceStatusLabelFor(a).compareTo(_invoiceStatusLabelFor(b));
+            break;
+          case 'createdAt':
+            final ca = a.createdAt ?? a.billedAt ?? DateTime(0);
+            final cb = b.createdAt ?? b.billedAt ?? DateTime(0);
+            cmp = ca.compareTo(cb);
+            break;
+          default: // invoiceNumber
+            cmp = a.invoiceNumber.compareTo(b.invoiceNumber);
+        }
+        return _invoiceSortAscending ? cmp : -cmp;
+      });
   }
 
   String _invoiceMonthLabel(ClientInvoiceSummary invoice) {

@@ -145,7 +145,10 @@ class _QuoteEditPageState extends State<QuoteEditPage> {
         _rebuildLineEditors(updated.lines);
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Devis sauvegardé')),
+        const SnackBar(
+          content: Text('Devis sauvegardé'),
+          backgroundColor: Color(0xFF15803D),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
