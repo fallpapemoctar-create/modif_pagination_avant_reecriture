@@ -1649,8 +1649,10 @@ class _BillingPageState extends State<BillingPage> {
             width: isCompact ? null : 320,
             child: TextFormField(
               controller: _invoiceSearchController,
+              style: const TextStyle(fontSize: 12),
               decoration: InputDecoration(
                 hintText: 'Rechercher une facture, un client ou un mois...',
+                hintStyle: const TextStyle(fontSize: 12),
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _invoiceSearchQuery.trim().isEmpty
                     ? null
@@ -1743,8 +1745,10 @@ class _BillingPageState extends State<BillingPage> {
                     label: 'Recherche rapide',
                     child: TextFormField(
                       controller: _invoiceSearchController,
+                      style: const TextStyle(fontSize: 12),
                       decoration: InputDecoration(
                         hintText: 'Rechercher une facture, un client ou un mois...',
+                        hintStyle: const TextStyle(fontSize: 12),
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _invoiceSearchQuery.trim().isEmpty
                             ? null
@@ -2596,7 +2600,7 @@ class _BillingPageState extends State<BillingPage> {
 
   String _formatInvoiceListDate(DateTime? date) {
     if (date == null) return '-';
-    return DateFormat('dd/MM/yyyy').format(date);
+    return DateFormat('dd/MM/yyyy HH:mm').format(date);
   }
 
   Widget _buildInvoiceStatusBadge(ClientInvoiceSummary invoice) {
