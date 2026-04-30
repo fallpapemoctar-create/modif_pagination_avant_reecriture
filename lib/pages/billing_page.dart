@@ -20,12 +20,10 @@ import '../core/responsive_helper.dart';
 import '../core/user_rights.dart';
 import '../models/company_bank_account.dart';
 import '../models/company_info.dart';
-import '../core/models/quote.dart';
 import '../services/billing_service.dart';
 import '../services/company_info_service.dart';
 import '../services/mission_service.dart';
-import '../services/quote_service.dart';
-import 'quote_edit_page.dart';
+
 import '../utils/pdf_download_helper_stub.dart'
     if (dart.library.html) '../utils/pdf_download_helper_web.dart';
 import '../widgets/client_autocomplete_field.dart';
@@ -271,15 +269,6 @@ class _BillingPageState extends State<BillingPage> {
   List<InvoiceDraftSummary> _drafts = [];
   bool _loadingDrafts = false;
   String? _draftsError;
-
-  // AMI v1.4 — Devis
-  List<Quote> _quotes = [];
-  int _quotesTotal = 0;
-  bool _loadingQuotes = false;
-  String? _quotesError;
-  String _quotesStatusFilter = 'draft';
-  int _quotesPage = 1;
-  static const int _quotesPageSize = 25;
 
   List<ClientInvoiceSummary> _invoices = [];
   bool _loadingInvoices = false;
@@ -671,7 +660,7 @@ class _BillingPageState extends State<BillingPage> {
               ButtonSegment<BillingSection>(
                 value: BillingSection.preparations,
                 icon: Icon(Icons.folder_copy_outlined),
-                label: Text('Factures & Devis initiés et non terminés'),
+                label: Text('Factures initiées'),
               ),
             ],
             selected: <BillingSection>{_activeSection},
@@ -769,7 +758,7 @@ class _BillingPageState extends State<BillingPage> {
                 ),
                 _SidebarEntry(
                   icon: Icons.folder_copy_outlined,
-                  label: 'Factures & Devis initiés et non terminés',
+                  label: 'Factures initiées',
                   selected: _activeSection == BillingSection.preparations,
                   onTap: () => _setActiveSection(BillingSection.preparations),
                   collapsed: collapsed,
@@ -875,7 +864,6 @@ class _BillingPageState extends State<BillingPage> {
     }
     if (section == BillingSection.preparations && !_loadingDrafts) {
       unawaited(_loadDrafts());
-      unawaited(_loadQuotes(reset: true));
     }
   }
 
@@ -4797,45 +4785,6 @@ class _BillingPageState extends State<BillingPage> {
     }
   }
 
-  // ---------------------------------------------------------------
-  // AMI v1.4 — Chargement des devis
-  // ---------------------------------------------------------------
-
-  Future<void> _loadQuotes({bool reset = false}) async {
-    if (reset) {
-      setState(() {
-        _quotesPage = 1;
-        _quotes = [];
-        _quotesTotal = 0;
-      });
-    }
-    if (mounted) {
-      setState(() {
-        _loadingQuotes = true;
-        _quotesError = null;
-      });
-    }
-    try {
-      final result = await QuoteService.getQuotes(
-        status: _quotesStatusFilter,
-        page: _quotesPage,
-        pageSize: _quotesPageSize,
-      );
-      if (!mounted) return;
-      setState(() {
-        _quotes = result.quotes;
-        _quotesTotal = result.total;
-        _loadingQuotes = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadingQuotes = false;
-        _quotesError = e.toString();
-      });
-    }
-  }
-
   /// Vérifie si un draft actif existe pour le client + mois sélectionnés.
   /// Si oui, propose Reprendre / Ignorer (RM-07).
   /// Retourne true si l'utilisateur a choisi de reprendre.
@@ -4937,220 +4886,44 @@ class _BillingPageState extends State<BillingPage> {
   // ---------------------------------------------------------------
 
   Widget _buildPreparationsView(double spacing) {
-    return DefaultTabController(
-      length: 2,
-      child: Padding(
-        padding: EdgeInsets.all(spacing),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TabBar(
-              tabs: const [
-                Tab(text: 'Factures initiées'),
-                Tab(text: 'Devis'),
-              ],
-              labelColor: const Color(0xFF000091),
-              unselectedLabelColor: const Color(0xFF6B7280),
-              indicatorColor: const Color(0xFF000091),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  // --- Onglet Préparations ---
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Factures initiées et non terminées',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 18),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.refresh),
-                              tooltip: 'Actualiser',
-                              onPressed: _loadDrafts,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Factures et devis initiés, sauvegardés mais non encore finalisés.',
-                          style:
-                              TextStyle(color: Color(0xFF6B7280), fontSize: 13),
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(child: _buildDraftsList()),
-                      ],
-                    ),
-                  ),
-                  // --- Onglet Devis ---
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Devis',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 18),
-                            ),
-                            const SizedBox(width: 6),
-                            if (_quotesTotal > 0)
-                              Text(
-                                '($_quotesTotal)',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Color(0xFF6B7280)),
-                              ),
-                            const SizedBox(width: 8),
-                            _buildQuotesStatusFilter(),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.refresh),
-                              tooltip: 'Actualiser',
-                              onPressed: () =>
-                                  _loadQuotes(reset: true),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(child: _buildQuotesList()),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuotesStatusFilter() {
-    const statuses = [
-      ('draft', 'Brouillons'),
-      ('sent', 'Envoyés'),
-      ('accepted', 'Acceptés'),
-      ('rejected', 'Rejetés'),
-      ('expired', 'Expirés'),
-      ('accepted_converted', 'Convertis'),
-    ];
-    return DropdownButton<String>(
-      value: _quotesStatusFilter,
-      isDense: true,
-      underline: const SizedBox.shrink(),
-      items: statuses
-          .map((s) => DropdownMenuItem(
-                value: s.$1,
-                child: Text(s.$2,
-                    style: const TextStyle(fontSize: 13)),
-              ))
-          .toList(),
-      onChanged: (v) {
-        if (v == null || v == _quotesStatusFilter) return;
-        setState(() {
-          _quotesStatusFilter = v;
-          _quotesPage = 1;
-        });
-        unawaited(_loadQuotes(reset: true));
-      },
-    );
-  }
-
-  Widget _buildQuotesList() {
-    if (_loadingQuotes) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_quotesError != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline,
-                color: Color(0xFFB91C1C), size: 32),
-            const SizedBox(height: 8),
-            Text(_quotesError!,
-                style: const TextStyle(color: Color(0xFFB91C1C))),
-            const SizedBox(height: 12),
-            FilledButton(
-                onPressed: () => _loadQuotes(reset: true),
-                child: const Text('Réessayer')),
-          ],
-        ),
-      );
-    }
-    if (_quotes.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.request_quote_outlined,
-                size: 40, color: Color(0xFF9CA3AF)),
-            SizedBox(height: 8),
-            Text('Aucun devis pour ce statut.',
-                style: TextStyle(color: Color(0xFF6B7280))),
-          ],
-        ),
-      );
-    }
-    final fmt = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
-    return ListView.separated(
-      itemCount: _quotes.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final quote = _quotes[index];
-        final statusColor = Quote.statusColor(quote.status);
-        return ListTile(
-          leading: Icon(Icons.request_quote_outlined, color: statusColor),
-          title: Row(
+    return Padding(
+      padding: EdgeInsets.all(spacing),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Expanded(
-                  child: Text(quote.clientName ?? '(client inconnu)',
-                      style: const TextStyle(fontWeight: FontWeight.w600))),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withAlpha(25),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: statusColor),
-                ),
-                child: Text(
-                  Quote.statusLabel(quote.status),
-                  style:
-                      TextStyle(fontSize: 11, color: statusColor),
-                ),
+              const Text(
+                'Factures initiées',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Actualiser',
+                onPressed: _loadDrafts,
               ),
             ],
           ),
-          subtitle: Text(
-            '#${quote.id}'
-            '${quote.missionRef != null ? '  •  Mission : ${quote.missionRef}' : ''}'
-            '  •  ${fmt.format(quote.totalHt)} HT'
-            '${quote.dateValidUntil != null ? '  •  Valable : ${quote.dateValidUntil}' : ''}',
-            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+          const SizedBox(height: 4),
+          const Text(
+            'Factures sauvegardées mais non encore finalisées.',
+            style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
           ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () async {
-            final result = await Navigator.of(context).push<bool>(
-              MaterialPageRoute(
-                builder: (_) => QuoteEditPage(initialQuote: quote),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+                side: const BorderSide(color: Color(0xFFE5E7EB), width: 1),
               ),
-            );
-            if (result == true || mounted) {
-              unawaited(_loadQuotes(reset: true));
-            }
-          },
-        );
-      },
+              clipBehavior: Clip.antiAlias,
+              child: _buildDraftsList(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
