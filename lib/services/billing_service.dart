@@ -214,6 +214,128 @@ class BillingService {
     }
   }
 
+  static Future<Map<String, String>> updateInvoiceBankAccount({
+    required String invoiceNumber,
+    required int bankAccountId,
+  }) async {
+    final payload = <String, dynamic>{
+      'invoice_number': invoiceNumber.trim(),
+      'bank_account_id': bankAccountId,
+    };
+
+    final response = await http.post(
+      Uri.parse("${_baseUrl}update_invoice_bank_account.php"),
+      headers: const {"Content-Type": "application/json"},
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        "Impossible de mettre à jour le compte bancaire (${response.statusCode}).",
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['success'] != true) {
+      final message = decoded is Map && decoded['error'] is String
+          ? decoded['error'] as String
+          : 'Réponse inattendue du serveur.';
+      throw Exception(message);
+    }
+    return {
+      'notes': (decoded['notes'] as String? ?? ''),
+      'bank_label': (decoded['bank_label'] as String? ?? ''),
+    };
+  }
+
+  static Future<Map<String, String>> updateInvoicePaymentTerm({
+    required String invoiceNumber,
+    required String termLabel,
+  }) async {
+    final payload = <String, dynamic>{
+      'invoice_number': invoiceNumber.trim(),
+      'term_label': termLabel.trim(),
+    };
+
+    final response = await http.post(
+      Uri.parse("${_baseUrl}update_invoice_payment_term.php"),
+      headers: const {"Content-Type": "application/json"},
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        "Impossible de mettre à jour la condition de règlement (${response.statusCode}).",
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['success'] != true) {
+      final message = decoded is Map && decoded['error'] is String
+          ? decoded['error'] as String
+          : 'Réponse inattendue du serveur.';
+      throw Exception(message);
+    }
+    return {
+      'notes': (decoded['notes'] as String? ?? ''),
+      'term_label': (decoded['term_label'] as String? ?? ''),
+    };
+  }
+
+  static Future<DateTime> updateInvoiceDate({
+    required String invoiceNumber,
+    required DateTime newDate,
+  }) async {
+    final payload = <String, dynamic>{
+      'invoice_number': invoiceNumber.trim(),
+      'new_date': DateFormat('yyyy-MM-dd HH:mm:ss').format(newDate),
+    };
+
+    final response = await http.post(
+      Uri.parse("${_baseUrl}update_invoice_date.php"),
+      headers: const {"Content-Type": "application/json"},
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        "Impossible de mettre à jour la date (${response.statusCode}).",
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['success'] != true) {
+      final message = decoded is Map && decoded['error'] is String
+          ? decoded['error'] as String
+          : 'Réponse inattendue du serveur.';
+      throw Exception(message);
+    }
+    return newDate;
+  }
+
+  static Future<ClientPaymentTermsResult> getAllPaymentTerms() async {
+    final uri = Uri.parse('${_baseUrl}get_client_payment_terms.php');
+    final response = await http.get(uri);
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Impossible de charger les conditions de règlement (${response.statusCode}).',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['success'] == true) {
+      final rawTerms = decoded['paymentTerms'] as List? ?? const [];
+      final terms = rawTerms
+          .whereType<Map>()
+          .map(
+            (row) => ClientPaymentTerm.fromJson(Map<String, dynamic>.from(row)),
+          )
+          .where((term) => term.id > 0)
+          .toList(growable: false);
+      return ClientPaymentTermsResult(paymentTerms: terms, defaultTermId: null);
+    }
+    final message = decoded is Map && decoded['error'] is String
+        ? decoded['error'] as String
+        : 'Réponse inattendue du serveur.';
+    throw Exception(message);
+  }
+
   static Future<ClientInvoiceLinesResult> fetchInvoiceLines(
     String invoiceNumber, {
     String? missionRef,
@@ -652,6 +774,9 @@ class ClientInvoiceSummary {
     String? statusLabel,
     double? invoiceTotalHt,
     double? amountHt,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? billedAt,
   }) {
     return ClientInvoiceSummary(
       id: id,
@@ -661,7 +786,7 @@ class ClientInvoiceSummary {
       statusLabel: statusLabel ?? this.statusLabel,
       amountHt: amountHt ?? this.amountHt,
       invoiceTotalHt: invoiceTotalHt ?? this.invoiceTotalHt,
-      billedAt: billedAt,
+      billedAt: billedAt ?? this.billedAt,
       periodMonth: periodMonth,
       missionRef: missionRef,
       pdfFilename: pdfFilename,
@@ -670,9 +795,9 @@ class ClientInvoiceSummary {
       createdBy: createdBy,
       createdByName: createdByName,
       category: category,
-      notes: notes,
+      notes: notes ?? this.notes,
       missionLabel: missionLabel,
-      createdAt: createdAt,
+      createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt,
     );
   }

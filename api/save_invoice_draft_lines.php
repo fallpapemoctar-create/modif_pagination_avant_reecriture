@@ -67,6 +67,7 @@ try {
         unit_price_ht,
         quantity,
         total_ht,
+        discount,
         notes,
         sort_order,
         created_by,
@@ -81,6 +82,7 @@ try {
         :unit_price_ht,
         :quantity,
         :total_ht,
+        :discount,
         :notes,
         :sort_order,
         :created_by,
@@ -101,9 +103,12 @@ try {
         $tvaRate = invoiceNormalizeDecimal($line['tva_rate'] ?? 0);
         $unitPrice = invoiceNormalizeDecimal($line['unit_price_ht'] ?? $line['unit_price'] ?? 0);
         $quantity = invoiceNormalizeDecimal($line['quantity'] ?? 1, 1.0);
-        $total = invoiceNormalizeDecimal($line['total_ht'] ?? ($unitPrice * $quantity));
+        $discount = invoiceNormalizeDecimal($line['discount'] ?? 0);
+        if ($discount < 0) $discount = 0;
+        if ($discount > 100) $discount = 100;
+        $total = invoiceNormalizeDecimal($line['total_ht'] ?? ($unitPrice * $quantity * (1 - $discount / 100)));
         if ($total <= 0 && $unitPrice > 0 && $quantity > 0) {
-            $total = $unitPrice * $quantity;
+            $total = $unitPrice * $quantity * (1 - $discount / 100);
         }
         if ($unitPrice <= 0 && $quantity > 0 && $total > 0) {
             $unitPrice = $total / $quantity;
@@ -122,6 +127,7 @@ try {
             ':unit_price_ht' => $unitPrice,
             ':quantity' => $quantity,
             ':total_ht' => $total,
+            ':discount' => $discount,
             ':notes' => trim((string) ($line['notes'] ?? '')) ?: null,
             ':sort_order' => (int) $idx,
             ':created_by' => $userId,

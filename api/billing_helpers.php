@@ -65,6 +65,7 @@ function ensureClientInvoiceLinesTable(PDO $pdo): void {
         unit_price_ht DECIMAL(15,4) DEFAULT 0,
         quantity DECIMAL(15,4) DEFAULT 0,
         total_ht DECIMAL(15,4) DEFAULT 0,
+        discount DECIMAL(6,3) DEFAULT 0,
         notes TEXT,
         sort_order INT DEFAULT 0,
         created_by INT DEFAULT NULL,
@@ -100,6 +101,7 @@ function ensureClientInvoiceLinesTable(PDO $pdo): void {
         'created_by_name' => $columnsToAdd[5],
         'updated_by' => $columnsToAdd[6],
         'updated_by_name' => $columnsToAdd[7],
+        'discount' => 'discount DECIMAL(6,3) DEFAULT 0 AFTER total_ht',
     ];
 
     foreach ($columnMap as $column => $definition) {

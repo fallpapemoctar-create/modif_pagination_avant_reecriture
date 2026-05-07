@@ -118,6 +118,7 @@ try {
         unit_price_ht,
         quantity,
         total_ht,
+        discount,
         notes,
         sort_order
     FROM tble_client_invoice_lines

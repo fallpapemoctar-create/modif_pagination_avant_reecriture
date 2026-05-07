@@ -55,13 +55,27 @@ class InvoiceLine {
     final quantityValue = _parseDouble(json['quantity'], 1);
     final tva = _parseDouble(json['tva_rate']);
     final discountValue = _parseDouble(json['discount']);
+    final storedTotalHt = _parseDouble(json['total_ht']);
+
+    // If discount is 0 (or absent) but the stored total_ht differs from the
+    // raw unit * qty, infer the discount from the stored total so that old
+    // invoices (created before discount was persisted) still render correctly.
+    double effectiveDiscount = discountValue < 0 ? 0 : discountValue;
+    if (effectiveDiscount == 0 && unit > 0 && quantityValue > 0 && storedTotalHt > 0) {
+      final rawTotal = unit * (quantityValue <= 0 ? 1.0 : quantityValue);
+      if ((rawTotal - storedTotalHt).abs() > 0.001) {
+        effectiveDiscount = ((1 - storedTotalHt / rawTotal) * 100)
+            .clamp(0.0, 100.0);
+      }
+    }
+
     return InvoiceLine(
       designation: designationValue.isEmpty ? 'Ligne de facture' : designationValue,
       missionRef: missionRef?.isEmpty ?? true ? null : missionRef,
       unitPrice: unit,
       quantity: quantityValue <= 0 ? 1 : quantityValue,
       tvaRate: tva,
-      discount: discountValue < 0 ? 0 : discountValue,
+      discount: effectiveDiscount,
       notes: notesValue.isEmpty ? null : notesValue,
     );
   }

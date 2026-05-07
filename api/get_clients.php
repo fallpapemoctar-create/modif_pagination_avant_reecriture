@@ -14,10 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 try {
     $q = isset($_GET['q']) ? trim($_GET['q']) : '';
-    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 500;
+    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 0;
     $activeOnly = isset($_GET['active_only']) && $_GET['active_only'] === '1';
-    if ($limit <= 0 || $limit > 10000) {
-        $limit = 500;
+    if ($limit <= 0) {
+        $limit = PHP_INT_MAX; // pas de limite : retourner toutes les societes
     }
 
         $sql = "SELECT s.rowid AS id, s.nom AS name, s.name_alias, s.address, s.zip, s.town, s.phone, s.fax, s.email, s.url,
@@ -37,13 +37,19 @@ try {
         $sql .= " AND (s.nom LIKE :search OR s.name_alias LIKE :search OR s.email LIKE :search OR s.phone LIKE :search OR s.fax LIKE :search OR s.town LIKE :search OR s.siren LIKE :search OR s.siret LIKE :search)";
         $params[':search'] = '%' . $q . '%';
     }
-    $sql .= " ORDER BY s.nom ASC LIMIT :limit";
+    if ($limit < PHP_INT_MAX) {
+        $sql .= " ORDER BY s.nom ASC LIMIT :limit";
+    } else {
+        $sql .= " ORDER BY s.nom ASC";
+    }
 
     $stmt = $pdo->prepare($sql);
     foreach ($params as $k => $v) {
         $stmt->bindValue($k, $v, PDO::PARAM_STR);
     }
-    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    if ($limit < PHP_INT_MAX) {
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    }
     $stmt->execute();
 
     $clients = [];

@@ -291,6 +291,10 @@ class _BillingPageState extends State<BillingPage> {
   bool _loadingInvoiceLinesPanel = false;
   bool _savingInvoiceLinesPanel = false;
   final Set<String> _updatingInvoiceStatus = <String>{};
+  final Set<String> _updatingInvoiceBankAccount = <String>{};
+  final Set<String> _updatingInvoicePaymentTerm = <String>{};
+  final Set<String> _updatingInvoiceDate = <String>{};
+  List<ClientPaymentTerm> _invoiceDetailPaymentTerms = [];
   final List<ClientInvoiceSummary> _creationClientInvoices = [];
   bool _loadingCreationClientInvoices = false;
 
@@ -1454,13 +1458,25 @@ class _BillingPageState extends State<BillingPage> {
       selected: _selectedLineIndex == index,
       onSelectChanged: (_) => _openLineEditor(index),
       cells: [
-        _buildSelectableCell(ref.isEmpty ? '-' : ref, width: columnWidths[0]),
-        _buildEditableDesignationCell(index, columnWidths[1]),
-        _buildTvaDropdownCell(index, columnWidths[2]),
+        DataCell(
+          SizedBox(
+            width: columnWidths[0],
+            child: Tooltip(
+              message: 'Supprimer cette ligne',
+              child: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFB91C1C), size: 20),
+                onPressed: () => _deleteLine(index),
+              ),
+            ),
+          ),
+        ),
+        _buildSelectableCell(ref.isEmpty ? '-' : ref, width: columnWidths[1]),
+        _buildEditableDesignationCell(index, columnWidths[2]),
+        _buildTvaDropdownCell(index, columnWidths[3]),
         _buildEditableNumberCell(
           label: 'P.U. HT',
           index: index,
-          width: columnWidths[3],
+          width: columnWidths[4],
           value: line.unitPrice,
           fractionDigits: 2,
           onChanged: (value) {
@@ -1471,13 +1487,13 @@ class _BillingPageState extends State<BillingPage> {
         ),
         _buildSelectableCell(
           _formatCurrency(line.unitPriceTtc),
-          width: columnWidths[4],
+          width: columnWidths[5],
           align: TextAlign.right,
         ),
         _buildEditableNumberCell(
           label: 'Réduc.',
           index: index,
-          width: columnWidths[5],
+          width: columnWidths[6],
           value: line.discount,
           fractionDigits: 2,
           onChanged: (value) {
@@ -1489,7 +1505,7 @@ class _BillingPageState extends State<BillingPage> {
         _buildEditableNumberCell(
           label: 'Quantité',
           index: index,
-          width: columnWidths[6],
+          width: columnWidths[7],
           value: line.quantity,
           fractionDigits: 3,
           onChanged: (value) {
@@ -1500,12 +1516,12 @@ class _BillingPageState extends State<BillingPage> {
         ),
         _buildSelectableCell(
           _formatCurrency(line.totalHt),
-          width: columnWidths[7],
+          width: columnWidths[8],
           align: TextAlign.right,
         ),
         _buildSelectableCell(
           _formatCurrency(line.totalTtc),
-          width: columnWidths[8],
+          width: columnWidths[9],
           align: TextAlign.right,
         ),
       ],
@@ -2965,7 +2981,7 @@ class _BillingPageState extends State<BillingPage> {
             ? constraints.maxWidth
             : MediaQuery.of(context).size.width;
         final tableWidth = math.max(viewportWidth, minWidth);
-        const fractions = <double>[0.09, 0.26, 0.07, 0.09, 0.09, 0.07, 0.07, 0.13, 0.13];
+        const fractions = <double>[0.05, 0.09, 0.22, 0.07, 0.09, 0.09, 0.07, 0.07, 0.12, 0.13];
         final columnWidths = fractions
             .map((ratio) => tableWidth * ratio)
             .toList();
@@ -2989,54 +3005,60 @@ class _BillingPageState extends State<BillingPage> {
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[0],
-                        child: const Text('Ref. mission'),
+                        child: const Text(''),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[1],
-                        child: const Text('Désignation'),
+                        child: const Text('Ref. mission'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[2],
-                        child: const Text('TVA'),
+                        child: const Text('Désignation'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[3],
-                        child: const Text('P.U. HT'),
+                        child: const Text('TVA'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[4],
-                        child: const Text('P.U. TTC'),
+                        child: const Text('P.U. HT'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[5],
-                        child: const Text('Réduc. %'),
+                        child: const Text('P.U. TTC'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[6],
-                        child: const Text('Qté'),
+                        child: const Text('Réduc. %'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[7],
-                        child: const Text('Total HT'),
+                        child: const Text('Qté'),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[8],
+                        child: const Text('Total HT'),
+                      ),
+                    ),
+                    DataColumn(
+                      label: SizedBox(
+                        width: columnWidths[9],
                         child: const Text('Total TTC'),
                       ),
                     ),
@@ -3289,10 +3311,15 @@ class _BillingPageState extends State<BillingPage> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: _buildInvoiceInfoTile(
-                              'Date création',
-                              createdAtLabel,
-                            ),
+                            child: isLocked
+                                ? _buildInvoiceInfoTile(
+                                    'Date création',
+                                    createdAtLabel,
+                                  )
+                                : _buildInvoiceDateEditor(
+                                    invoice,
+                                    invoice.createdAt ?? invoice.billedAt,
+                                  ),
                           ),
                         ],
                       ),
@@ -3345,15 +3372,22 @@ class _BillingPageState extends State<BillingPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildInvoiceParameterBlock(
-                        label: 'Condition de règlement',
-                        value: paymentTermLabel,
-                      ),
+                      if (isLocked || _invoiceDetailPaymentTerms.isEmpty)
+                        _buildInvoiceParameterBlock(
+                          label: 'Condition de règlement',
+                          value: paymentTermLabel,
+                        )
+                      else
+                        _buildInvoicePaymentTermDropdown(
+                            invoice, paymentTermLabel),
                       const SizedBox(height: 14),
-                      _buildInvoiceParameterBlock(
-                        label: 'Compte bancaire',
-                        value: bankLabel,
-                      ),
+                      if (isLocked || _companyBankAccounts.isEmpty)
+                        _buildInvoiceParameterBlock(
+                          label: 'Compte bancaire',
+                          value: bankLabel,
+                        )
+                      else
+                        _buildInvoiceBankAccountDropdown(invoice, bankLabel),
                     ],
                   ),
                 ),
@@ -3574,6 +3608,301 @@ class _BillingPageState extends State<BillingPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildInvoiceBankAccountDropdown(
+    ClientInvoiceSummary invoice,
+    String currentBankLabel,
+  ) {
+    final invoiceNumber = invoice.invoiceNumber;
+    final isUpdating = _updatingInvoiceBankAccount.contains(invoiceNumber);
+    final currentAccount =
+        _findCompanyBankAccountForInvoiceLabel(currentBankLabel);
+    final currentId = currentAccount?.id;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Compte bancaire',
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                value: currentId,
+                isExpanded: true,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 14,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(),
+                ),
+                items: _companyBankAccounts.map((account) {
+                  return DropdownMenuItem<int>(
+                    value: account.id,
+                    child: Text(
+                      account.dropdownLabel,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: isUpdating
+                    ? null
+                    : (newId) {
+                        if (newId != null && newId != currentId) {
+                          _changeInvoiceBankAccount(invoice, newId);
+                        }
+                      },
+              ),
+            ),
+            if (isUpdating) ...[
+              const SizedBox(width: 8),
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvoicePaymentTermDropdown(
+    ClientInvoiceSummary invoice,
+    String currentTermLabel,
+  ) {
+    final invoiceNumber = invoice.invoiceNumber;
+    final isUpdating = _updatingInvoicePaymentTerm.contains(invoiceNumber);
+    final currentTerm = _findPaymentTermForInvoiceLabel(currentTermLabel);
+    final currentId = currentTerm?.id;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Condition de règlement',
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                value: currentId,
+                isExpanded: true,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 14,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(),
+                ),
+                items: _invoiceDetailPaymentTerms.map((term) {
+                  return DropdownMenuItem<int>(
+                    value: term.id,
+                    child: Text(
+                      term.displayLabel,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: isUpdating
+                    ? null
+                    : (newId) {
+                        if (newId != null && newId != currentId) {
+                          _changeInvoicePaymentTerm(invoice, newId);
+                        }
+                      },
+              ),
+            ),
+            if (isUpdating) ...[
+              const SizedBox(width: 8),
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceDateEditor(
+    ClientInvoiceSummary invoice,
+    DateTime? currentDate,
+  ) {
+    final invoiceNumber = invoice.invoiceNumber;
+    final isUpdating = _updatingInvoiceDate.contains(invoiceNumber);
+    final displayText = currentDate != null
+        ? DateFormat('dd/MM/yyyy HH:mm').format(currentDate)
+        : '-';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Date création',
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: isUpdating
+                    ? null
+                    : () => _pickInvoiceDate(invoice, currentDate),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF94A3B8)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today_outlined,
+                        size: 15,
+                        color: Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          displayText,
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (isUpdating) ...[
+              const SizedBox(width: 8),
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickInvoiceDate(
+    ClientInvoiceSummary invoice,
+    DateTime? current,
+  ) async {
+    final now = DateTime.now();
+    final initial = current ?? now;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 10),
+      lastDate: DateTime(now.year + 5),
+      helpText: 'Date de création de la facture',
+      cancelText: 'Annuler',
+      confirmText: 'Sélectionner',
+    );
+    if (!mounted || picked == null) return;
+
+    // Keep existing time if there was one, else use current time
+    final existingTime = current != null
+        ? TimeOfDay(hour: current.hour, minute: current.minute)
+        : TimeOfDay.now();
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: existingTime,
+      helpText: 'Heure',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+    );
+    if (!mounted) return;
+
+    final time = pickedTime ?? existingTime;
+    final newDate = DateTime(
+      picked.year,
+      picked.month,
+      picked.day,
+      time.hour,
+      time.minute,
+    );
+    _changeInvoiceDate(invoice, newDate);
+  }
+
+  Future<void> _changeInvoiceDate(
+    ClientInvoiceSummary invoice,
+    DateTime newDate,
+  ) async {
+    final invoiceNumber = invoice.invoiceNumber;
+    if (_updatingInvoiceDate.contains(invoiceNumber)) return;
+
+    final optimistic = invoice.copyWith(
+      createdAt: newDate,
+      billedAt: newDate,
+    );
+
+    setState(() {
+      _updatingInvoiceDate.add(invoiceNumber);
+      _replaceInvoice(invoiceNumber, optimistic);
+      if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+        _selectedInvoice = optimistic;
+      }
+    });
+
+    try {
+      await BillingService.updateInvoiceDate(
+        invoiceNumber: invoiceNumber,
+        newDate: newDate,
+      );
+      // confirmed — optimistic already applied
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _replaceInvoice(invoiceNumber, invoice);
+          if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+            _selectedInvoice = invoice;
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Mise à jour de la date impossible. Vérifiez votre connexion.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _updatingInvoiceDate.remove(invoiceNumber));
+      }
+    }
   }
 
   Widget _buildInvoiceMissionTable({
@@ -4099,6 +4428,7 @@ class _BillingPageState extends State<BillingPage> {
     });
     if (!alreadySelected) {
       _loadInvoiceLines(invoice, missionRef: effectiveMissionRef);
+      _loadInvoiceDetailPaymentTerms();
     }
   }
 
@@ -4313,9 +4643,214 @@ class _BillingPageState extends State<BillingPage> {
           statusLabel: replacement.statusLabel,
           invoiceTotalHt: replacement.invoiceTotalHt,
           amountHt: _invoices[index].amountHt,
+          notes: replacement.notes,
+          createdAt: replacement.createdAt,
+          billedAt: replacement.billedAt,
         );
       }
     }
+  }
+
+  Future<void> _changeInvoiceBankAccount(
+    ClientInvoiceSummary invoice,
+    int bankAccountId,
+  ) async {
+    final invoiceNumber = invoice.invoiceNumber;
+    if (_updatingInvoiceBankAccount.contains(invoiceNumber)) return;
+
+    // Optimistic update
+    final account = _companyBankAccounts.firstWhere(
+      (a) => a.id == bankAccountId,
+      orElse: () => _companyBankAccounts.first,
+    );
+    final optimisticLabel = account.dropdownLabel;
+    final oldNotes = invoice.notes ?? '';
+    final newNotes = _replaceNotesBankLabel(oldNotes, optimisticLabel);
+    final optimistic = invoice.copyWith(notes: newNotes);
+
+    setState(() {
+      _updatingInvoiceBankAccount.add(invoiceNumber);
+      _replaceInvoice(invoiceNumber, optimistic);
+      if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+        _selectedInvoice = optimistic;
+      }
+    });
+
+    try {
+      final result = await BillingService.updateInvoiceBankAccount(
+        invoiceNumber: invoiceNumber,
+        bankAccountId: bankAccountId,
+      );
+      final confirmedNotes = result['notes'] ?? newNotes;
+      final confirmed = invoice.copyWith(notes: confirmedNotes);
+      if (mounted) {
+        setState(() {
+          _replaceInvoice(invoiceNumber, confirmed);
+          if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+            _selectedInvoice = confirmed;
+          }
+        });
+      }
+    } catch (_) {
+      // Revert on failure
+      if (mounted) {
+        setState(() {
+          _replaceInvoice(invoiceNumber, invoice);
+          if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+            _selectedInvoice = invoice;
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Mise à jour du compte bancaire impossible. Vérifiez votre connexion.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _updatingInvoiceBankAccount.remove(invoiceNumber));
+      }
+    }
+  }
+
+  /// Replaces the "Compte bancaire : ..." line in [notes] with [newLabel].
+  String _replaceNotesBankLabel(String notes, String newLabel) {
+    final newLine = 'Compte bancaire : $newLabel';
+    final lines = notes.split('\n');
+    var found = false;
+    final updated = lines.map((line) {
+      final trimmed = line.trim();
+      final colonIdx = trimmed.indexOf(':');
+      if (!found && colonIdx > 0) {
+        final key = trimmed.substring(0, colonIdx).trim().toLowerCase();
+        if (key == 'compte bancaire') {
+          found = true;
+          return newLine;
+        }
+      }
+      return line;
+    }).toList();
+    if (!found) updated.add(newLine);
+    return updated.join('\n').trim();
+  }
+
+  Future<void> _loadInvoiceDetailPaymentTerms() async {
+    // Only load if we don't have them already
+    if (_invoiceDetailPaymentTerms.isNotEmpty) return;
+    try {
+      final result = await BillingService.getAllPaymentTerms();
+      if (mounted) {
+        setState(() {
+          _invoiceDetailPaymentTerms = result.paymentTerms;
+        });
+      }
+    } catch (_) {
+      // Payment terms will just not be editable; static display remains
+    }
+  }
+
+  ClientPaymentTerm? _findPaymentTermForInvoiceLabel(String label) {
+    final normalized = _normalizeLooseLabel(label);
+    if (normalized.isEmpty) return null;
+    for (final term in _invoiceDetailPaymentTerms) {
+      final candidates = <String>[
+        term.displayLabel,
+        term.dropdownLabel,
+        term.label,
+        term.code,
+      ];
+      if (candidates.any(
+        (c) => _normalizeLooseLabel(c) == normalized,
+      )) {
+        return term;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _changeInvoicePaymentTerm(
+    ClientInvoiceSummary invoice,
+    int termId,
+  ) async {
+    final invoiceNumber = invoice.invoiceNumber;
+    if (_updatingInvoicePaymentTerm.contains(invoiceNumber)) return;
+
+    final term = _invoiceDetailPaymentTerms.firstWhere(
+      (t) => t.id == termId,
+      orElse: () => _invoiceDetailPaymentTerms.first,
+    );
+    final optimisticLabel = term.displayLabel;
+    final oldNotes = invoice.notes ?? '';
+    final newNotes = _replaceNotesPaymentTermLabel(oldNotes, optimisticLabel);
+    final optimistic = invoice.copyWith(notes: newNotes);
+
+    setState(() {
+      _updatingInvoicePaymentTerm.add(invoiceNumber);
+      _replaceInvoice(invoiceNumber, optimistic);
+      if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+        _selectedInvoice = optimistic;
+      }
+    });
+
+    try {
+      final result = await BillingService.updateInvoicePaymentTerm(
+        invoiceNumber: invoiceNumber,
+        termLabel: optimisticLabel,
+      );
+      final confirmedNotes = result['notes'] ?? newNotes;
+      final confirmed = invoice.copyWith(notes: confirmedNotes);
+      if (mounted) {
+        setState(() {
+          _replaceInvoice(invoiceNumber, confirmed);
+          if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+            _selectedInvoice = confirmed;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _replaceInvoice(invoiceNumber, invoice);
+          if (_selectedInvoice?.invoiceNumber == invoiceNumber) {
+            _selectedInvoice = invoice;
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Mise à jour de la condition de règlement impossible. Vérifiez votre connexion.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _updatingInvoicePaymentTerm.remove(invoiceNumber));
+      }
+    }
+  }
+
+  /// Replaces the "Condition de règlement : ..." line in [notes] with [newLabel].
+  String _replaceNotesPaymentTermLabel(String notes, String newLabel) {
+    final newLine = 'Condition de règlement : $newLabel';
+    final lines = notes.split('\n');
+    var found = false;
+    final updated = lines.map((line) {
+      final trimmed = line.trim();
+      final colonIdx = trimmed.indexOf(':');
+      if (!found && colonIdx > 0) {
+        final key = trimmed.substring(0, colonIdx).trim().toLowerCase();
+        if (key == 'condition de règlement') {
+          found = true;
+          return newLine;
+        }
+      }
+      return line;
+    }).toList();
+    if (!found) updated.add(newLine);
+    return updated.join('\n').trim();
   }
 
   Widget _buildLineEditorPanel(double spacing) {
@@ -4535,6 +5070,20 @@ class _BillingPageState extends State<BillingPage> {
       }
     });
     _initLineControllers();
+    _scheduleDraftSave();
+  }
+
+  void _deleteLine(int index) {
+    if (index < 0 || index >= _lineEditors.length) return;
+    setState(() {
+      _lineEditors.removeAt(index);
+      if (_selectedLineIndex == index) {
+        _selectedLineIndex = null;
+        _showLinePanel = false;
+      } else if (_selectedLineIndex != null && _selectedLineIndex! > index) {
+        _selectedLineIndex = _selectedLineIndex! - 1;
+      }
+    });
     _scheduleDraftSave();
   }
 
@@ -5602,7 +6151,7 @@ class _BillingPageState extends State<BillingPage> {
       if (dateA == null && dateB == null) return 0;
       if (dateA == null) return 1;
       if (dateB == null) return -1;
-      return dateB.compareTo(dateA);
+      return dateA.compareTo(dateB);
     });
     setState(() {
       _missions = filtered;
@@ -5651,6 +6200,14 @@ class _BillingPageState extends State<BillingPage> {
         ),
       );
     }
+    newEditors.sort((a, b) {
+      final dateA = a.mission != null ? _missionDate(a.mission!) : null;
+      final dateB = b.mission != null ? _missionDate(b.mission!) : null;
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      return dateA.compareTo(dateB);
+    });
     setState(() {
       _lineEditors
         ..clear()

@@ -22,14 +22,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 
 try {
     $clientId = isset($_GET['client_id']) ? (int) $_GET['client_id'] : 0;
-    if ($clientId <= 0) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error' => 'client_id is required',
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
 
     $societeField = null;
     if (paymentTermColumnExists($pdo, 'llx_societe', 'fk_cond_reglement')) {

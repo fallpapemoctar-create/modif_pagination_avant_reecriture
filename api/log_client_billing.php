@@ -144,7 +144,7 @@ try {
     }
 
     if ($pdfBinary !== null) {
-        $storageDir = __DIR__ . '/../build/Factures_PDF';
+        $storageDir = __DIR__ . '/../Factures_PDF';
         if (!is_dir($storageDir)) {
             mkdir($storageDir, 0775, true);
         }
@@ -178,7 +178,9 @@ try {
             $tvaRate = invoiceNormalizeDecimal($line['tva_rate'] ?? 0);
             $unitPrice = invoiceNormalizeDecimal($line['unit_price_ht'] ?? $line['unit_price'] ?? 0);
             $quantity = invoiceNormalizeDecimal($line['quantity'] ?? 1, 1.0);
-            $totalLine = invoiceNormalizeDecimal($line['total_ht'] ?? ($unitPrice * $quantity));
+            $discount = invoiceNormalizeDecimal($line['discount'] ?? 0);
+            $discount = max(0.0, min(100.0, $discount));
+            $totalLine = invoiceNormalizeDecimal($line['total_ht'] ?? ($unitPrice * $quantity * (1 - $discount / 100)));
             $invoiceLines[] = [
                 'mission_ref' => $missionRefLine === '' ? null : $missionRefLine,
                 'designation' => $designation,
@@ -186,6 +188,7 @@ try {
                 'unit_price_ht' => $unitPrice,
                 'quantity' => $quantity <= 0 ? 1.0 : $quantity,
                 'total_ht' => $totalLine,
+                'discount' => $discount,
                 'sort_order' => $idx,
                 'notes' => trim((string) ($line['notes'] ?? '')),
             ];
@@ -200,6 +203,7 @@ try {
             unit_price_ht,
             quantity,
             total_ht,
+            discount,
             notes
         FROM tble_client_invoice_lines
         WHERE draft_key = :draft
@@ -212,6 +216,8 @@ try {
             if ($designation === '') {
                 $designation = 'Ligne de facture';
             }
+            $draftDiscount = invoiceNormalizeDecimal($row['discount'] ?? 0);
+            $draftDiscount = max(0.0, min(100.0, $draftDiscount));
             $invoiceLines[] = [
                 'mission_ref' => isset($row['mission_ref']) && $row['mission_ref'] !== '' ? $row['mission_ref'] : null,
                 'designation' => $designation,
@@ -219,6 +225,7 @@ try {
                 'unit_price_ht' => invoiceNormalizeDecimal($row['unit_price_ht'] ?? 0),
                 'quantity' => invoiceNormalizeDecimal($row['quantity'] ?? 1, 1.0),
                 'total_ht' => invoiceNormalizeDecimal($row['total_ht'] ?? 0),
+                'discount' => $draftDiscount,
                 'sort_order' => $idx,
                 'notes' => trim((string) ($row['notes'] ?? '')),
             ];
@@ -324,6 +331,7 @@ try {
         unit_price_ht,
         quantity,
         total_ht,
+        discount,
         notes,
         sort_order,
         client_name,
@@ -338,6 +346,7 @@ try {
         :unit_price_ht,
         :quantity,
         :total_ht,
+        :discount,
         :notes,
         :sort_order,
         :client_name,
@@ -355,6 +364,7 @@ try {
             ':unit_price_ht' => $line['unit_price_ht'],
             ':quantity' => $line['quantity'],
             ':total_ht' => $line['total_ht'],
+            ':discount' => $line['discount'] ?? 0,
             ':notes' => $line['notes'],
             ':sort_order' => $line['sort_order'],
             ':client_name' => $clientName !== '' ? $clientName : null,

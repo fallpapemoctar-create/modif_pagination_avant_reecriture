@@ -41,6 +41,7 @@ try {
         unit_price_ht,
         quantity,
         total_ht,
+        discount,
         notes,
         sort_order,
         client_name,
