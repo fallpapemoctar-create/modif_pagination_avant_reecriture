@@ -467,7 +467,6 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     try {
       final results = await ClientService.getClientSummaries(
         query: normalized.isEmpty ? null : normalized,
-        limit: normalized.isEmpty ? 20 : 100,
       );
       if (!mounted || requestId != _requestingCompanySearchRequestId) return;
       setState(() {
@@ -634,6 +633,15 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       final missions = (response['missions'] as List<dynamic>? ?? const [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
+      missions.sort((a, b) {
+        final dateA = (a['datemission_iso'] ?? a['datemission'] ?? '').toString();
+        final dateB = (b['datemission_iso'] ?? b['datemission'] ?? '').toString();
+        final dc = dateB.compareTo(dateA); // DESC
+        if (dc != 0) return dc;
+        final heureA = (a['heuredebutmission'] ?? '').toString();
+        final heureB = (b['heuredebutmission'] ?? '').toString();
+        return heureA.compareTo(heureB); // ASC
+      });
       setState(() {
         _missions = missions;
         _total = (response['total'] as int?) ?? missions.length;
@@ -4836,7 +4844,9 @@ class _MissionFormPanelState extends State<_MissionFormPanel> {
                                   onSelected: (value) {
                                     setState(() {
                                       if (value) {
-                                        _selectedMissionTypes.add(choice);
+                                        _selectedMissionTypes
+                                          ..clear()
+                                          ..add(choice);
                                       } else {
                                         _selectedMissionTypes.remove(choice);
                                       }

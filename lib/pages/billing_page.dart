@@ -3632,7 +3632,7 @@ class _BillingPageState extends State<BillingPage> {
           children: [
             Expanded(
               child: DropdownButtonFormField<int>(
-                value: currentId,
+                initialValue: currentId,
                 isExpanded: true,
                 style: const TextStyle(
                   color: Color(0xFF0F172A),
@@ -3697,7 +3697,7 @@ class _BillingPageState extends State<BillingPage> {
           children: [
             Expanded(
               child: DropdownButtonFormField<int>(
-                value: currentId,
+                initialValue: currentId,
                 isExpanded: true,
                 style: const TextStyle(
                   color: Color(0xFF0F172A),
@@ -6151,7 +6151,11 @@ class _BillingPageState extends State<BillingPage> {
       if (dateA == null && dateB == null) return 0;
       if (dateA == null) return 1;
       if (dateB == null) return -1;
-      return dateA.compareTo(dateB);
+      final dc = dateA.compareTo(dateB);
+      if (dc != 0) return dc;
+      final heureA = (a['heuredebutmission'] ?? a['heure_debut'] ?? '').toString();
+      final heureB = (b['heuredebutmission'] ?? b['heure_debut'] ?? '').toString();
+      return heureA.compareTo(heureB);
     });
     setState(() {
       _missions = filtered;
@@ -6206,7 +6210,11 @@ class _BillingPageState extends State<BillingPage> {
       if (dateA == null && dateB == null) return 0;
       if (dateA == null) return 1;
       if (dateB == null) return -1;
-      return dateA.compareTo(dateB);
+      final dc = dateA.compareTo(dateB);
+      if (dc != 0) return dc;
+      final heureA = (a.mission?['heuredebutmission'] ?? a.mission?['heure_debut'] ?? '').toString();
+      final heureB = (b.mission?['heuredebutmission'] ?? b.mission?['heure_debut'] ?? '').toString();
+      return heureA.compareTo(heureB);
     });
     setState(() {
       _lineEditors

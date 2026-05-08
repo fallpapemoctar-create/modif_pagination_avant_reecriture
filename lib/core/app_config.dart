@@ -1,12 +1,19 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/services.dart' show rootBundle;
 
-// Allows selecting an alternative config at build time:
-// flutter build web --dart-define=APP_CONFIG_ASSET=assets/config/app_config.prod.json
-const String _configAsset = String.fromEnvironment(
-  'APP_CONFIG_ASSET',
-  defaultValue: 'assets/config/app_config.json',
-);
+// Config asset selection priority:
+// 1. --dart-define=APP_CONFIG_ASSET=<path>  (explicit override)
+// 2. Release build  → assets/config/app_config.prod.json
+// 3. Debug/profile  → assets/config/app_config.json  (localhost)
+const String _configAssetOverride = String.fromEnvironment('APP_CONFIG_ASSET');
+
+String get _configAsset {
+  if (_configAssetOverride.isNotEmpty) return _configAssetOverride;
+  return kReleaseMode
+      ? 'assets/config/app_config.prod.json'
+      : 'assets/config/app_config.json';
+}
 
 class AppConfig {
   final String apiBaseUrl;
@@ -23,8 +30,8 @@ class AppConfig {
     return inst;
   }
 
-  static Future<void> load({String assetPath = _configAsset}) async {
-    final raw = await rootBundle.loadString(assetPath);
+  static Future<void> load({String? assetPath}) async {
+    final raw = await rootBundle.loadString(assetPath ?? _configAsset);
     final map = jsonDecode(raw) as Map<String, dynamic>;
     final base = map['apiBaseUrl'] as String?;
     if (base == null || base.isEmpty) {

@@ -302,7 +302,7 @@ try {
             WHERE cb_inner.category = 'client'
         ) cb ON cb.mission_ref = m.ref
         WHERE $where
-        ORDER BY m.datemission DESC, m.heuredebutmission DESC
+        ORDER BY m.datemission DESC, m.heuredebutmission ASC
     ";
 
     if (!$exportAll) {

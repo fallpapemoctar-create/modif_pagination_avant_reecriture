@@ -60,8 +60,11 @@ class InvoiceLine {
     // If discount is 0 (or absent) but the stored total_ht differs from the
     // raw unit * qty, infer the discount from the stored total so that old
     // invoices (created before discount was persisted) still render correctly.
+    // Also handles total_ht = 0 explicitly stored (e.g. a line billed at 0€):
+    // in that case discount is inferred as 100 % so the getter returns 0.
     double effectiveDiscount = discountValue < 0 ? 0 : discountValue;
-    if (effectiveDiscount == 0 && unit > 0 && quantityValue > 0 && storedTotalHt > 0) {
+    final hasStoredTotal = json.containsKey('total_ht') && json['total_ht'] != null;
+    if (effectiveDiscount == 0 && unit > 0 && quantityValue > 0 && hasStoredTotal) {
       final rawTotal = unit * (quantityValue <= 0 ? 1.0 : quantityValue);
       if ((rawTotal - storedTotalHt).abs() > 0.001) {
         effectiveDiscount = ((1 - storedTotalHt / rawTotal) * 100)

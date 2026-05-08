@@ -55,9 +55,9 @@ class Interpreter {
     final countryCode = json['country_code'] ?? json['country_iso'];
 
     return Interpreter(
-      id: (json['id_tble_annuaire_interpretes'] ?? json['id']) is int
-          ? (json['id_tble_annuaire_interpretes'] ?? json['id']) as int
-          : int.tryParse((json['id_tble_annuaire_interpretes'] ?? json['id']).toString()) ?? 0,
+      id: (json['rowid'] ?? json['id_tble_annuaire_interpretes'] ?? json['id']) is int
+          ? (json['rowid'] ?? json['id_tble_annuaire_interpretes'] ?? json['id']) as int
+          : int.tryParse((json['rowid'] ?? json['id_tble_annuaire_interpretes'] ?? json['id'])?.toString() ?? '') ?? 0,
       numero: json['Numero'] ?? json['numero'] ?? '',
       nom: nom,
       prenom: prenom,

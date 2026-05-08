@@ -379,6 +379,16 @@ try {
         $cleanupDraftStmt->execute([':draft' => $draftKey]);
     }
 
+    // Recalcule le total réel depuis les lignes insérées et met à jour invoice_total_ht
+    $recalcStmt = $pdo->prepare(
+        'SELECT COALESCE(SUM(total_ht), 0) FROM tble_client_invoice_lines WHERE invoice_number = :invoice'
+    );
+    $recalcStmt->execute([':invoice' => $invoiceNumber]);
+    $realTotal = round((float) $recalcStmt->fetchColumn(), 2);
+
+    $pdo->prepare("UPDATE tble_client_billed SET invoice_total_ht = :t, updated_at = CURRENT_TIMESTAMP WHERE invoice_number = :invoice")
+        ->execute([':t' => $realTotal, ':invoice' => $invoiceNumber]);
+
     $pdo->commit();
 
     billingCreationLog('request_succeeded', [

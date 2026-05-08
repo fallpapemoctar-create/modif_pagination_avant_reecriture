@@ -80,8 +80,11 @@ class InterpreterService {
   // DELETE : Supprimer un interprète
   // -----------------------------
   static Future<bool> deleteInterpreter(int id) async {
+    final uri = Uri.parse("${baseUrl}delete_interprete.php").replace(
+      queryParameters: {'id': id.toString()},
+    );
     final response = await http.delete(
-      Uri.parse("${baseUrl}delete_interprete.php"),
+      uri,
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({"id": id}),
     );
