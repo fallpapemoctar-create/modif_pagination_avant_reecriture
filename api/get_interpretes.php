@@ -34,6 +34,7 @@ try {
                 FROM llx_user u
                 LEFT JOIN llx_c_country c ON c.rowid = u.fk_country
                 WHERE u.rowid IS NOT NULL
+                AND (u.statut IS NULL OR u.statut != -1)
     ";
 
     $params = [];

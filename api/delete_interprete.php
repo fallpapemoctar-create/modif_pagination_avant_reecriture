@@ -11,9 +11,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-$data = json_decode(file_get_contents("php://input"), true);
+$data = json_decode(file_get_contents("php://input"), true) ?? [];
 
-$id = (int) ($data['id'] ?? $data['rowid'] ?? $data['id_tble_annuaire_interpretes'] ?? 0);
+$id = (int) ($_GET['id'] ?? $data['id'] ?? $data['rowid'] ?? $data['id_tble_annuaire_interpretes'] ?? 0);
 
 if ($id <= 0) {
     http_response_code(400);
@@ -22,29 +22,20 @@ if ($id <= 0) {
 }
 
 try {
-    $pdo->beginTransaction();
+    // Soft delete : statut = -1 (suppression logique) pour éviter les erreurs
+    // de contrainte FK depuis llx_facture, llx_missionsplanet_mission, etc.
+    $stmt = $pdo->prepare("UPDATE llx_user SET statut = -1 WHERE rowid = :id AND statut != -1");
+    $stmt->execute([':id' => $id]);
 
-    $delRights = $pdo->prepare("DELETE FROM tble_user_rights WHERE user_id = :id");
-    $delRights->execute([':id' => $id]);
-
-    $delUser = $pdo->prepare("DELETE FROM llx_user WHERE rowid = :id");
-    $delUser->execute([':id' => $id]);
-
-    if ($delUser->rowCount() === 0) {
-        $pdo->rollBack();
+    if ($stmt->rowCount() === 0) {
         http_response_code(404);
-        echo json_encode(['success' => false, 'error' => "Interprète introuvable"]);
+        echo json_encode(['success' => false, 'error' => "Interprète introuvable ou déjà supprimé"]);
         exit;
     }
-
-    $pdo->commit();
 
     echo json_encode(['success' => true, 'message' => 'Interprète supprimé']);
 
 } catch (Exception $e) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
