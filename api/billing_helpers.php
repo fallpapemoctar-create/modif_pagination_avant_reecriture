@@ -43,6 +43,31 @@ function ensureClientBillingTable(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
 
     $pdo->exec($sql);
+
+    // Ensure columns added after initial creation are present
+    $clientBilledMigrations = [
+        'status_code'      => "status_code VARCHAR(32) NOT NULL DEFAULT 'draft' AFTER billed_at",
+        'status_label'     => "status_label VARCHAR(128) DEFAULT NULL AFTER status_code",
+        'category'         => "category VARCHAR(32) NOT NULL DEFAULT 'client' AFTER status_label",
+        'pdf_path'         => "pdf_path VARCHAR(255) DEFAULT NULL AFTER category",
+        'pdf_filename'     => "pdf_filename VARCHAR(255) DEFAULT NULL AFTER pdf_path",
+        'pdf_size'         => "pdf_size INT DEFAULT NULL AFTER pdf_filename",
+        'created_by'       => "created_by INT DEFAULT NULL AFTER pdf_size",
+        'created_by_name'  => "created_by_name VARCHAR(255) DEFAULT NULL AFTER created_by",
+        'notes'            => "notes TEXT DEFAULT NULL AFTER created_by_name",
+        'invoice_total_ht' => "invoice_total_ht DECIMAL(15,2) DEFAULT NULL AFTER invoice_number",
+        'amount_ht'        => "amount_ht DECIMAL(15,2) DEFAULT NULL AFTER invoice_total_ht",
+    ];
+    foreach ($clientBilledMigrations as $col => $def) {
+        if (!billingColumnExists($pdo, 'tble_client_billed', $col)) {
+            try {
+                $pdo->exec("ALTER TABLE tble_client_billed ADD COLUMN $def");
+            } catch (Exception $e) {
+                // ignore if already exists (race condition)
+            }
+        }
+    }
+
     $ensured = true;
 }
 

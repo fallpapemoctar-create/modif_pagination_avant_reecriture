@@ -1,4 +1,10 @@
 DirectoryIndex index.html
+
+# Allow all HTTP methods (DELETE is needed for API endpoints)
+<LimitExcept GET POST DELETE OPTIONS PUT PATCH HEAD>
+    Deny from all
+</LimitExcept>
+
 RewriteEngine On
 
 # Serve existing files directly

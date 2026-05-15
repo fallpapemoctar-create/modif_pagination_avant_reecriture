@@ -98,6 +98,7 @@ try {
     $billedStatus = isset($_GET['billedStatus']) ? trim($_GET['billedStatus']) : '';
     $missionStatus = isset($_GET['missionStatus']) ? trim($_GET['missionStatus']) : '';
     $missionType = isset($_GET['missionType']) ? trim($_GET['missionType']) : '';
+    $clientId = isset($_GET['clientId']) ? intval($_GET['clientId']) : 0;
     $exportAll = isset($_GET['exportAll']) && ($_GET['exportAll'] === '1' || strtolower($_GET['exportAll']) === 'true');
 
     // Detect optional columns (compat with varying schemas)
@@ -115,6 +116,10 @@ try {
     if ($requestingCompany !== '') {
         $where .= " AND s.nom LIKE :requestingCompany";
         $params[':requestingCompany'] = "%$requestingCompany%";
+    }
+    if ($clientId > 0) {
+        $where .= " AND m.fk_soc = :clientId";
+        $params[':clientId'] = $clientId;
     }
     if ($dateStart !== '') {
         $startDate = DateTime::createFromFormat('Y-m-d', $dateStart);

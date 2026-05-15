@@ -171,6 +171,7 @@ class MissionService {
   static Future<List<Map<String, dynamic>>> getMissionsDatatableAll({
     String? q,
     String? requestingCompany,
+    int? clientId,
     String? dateStart,
     String? dateEnd,
     String? billedStatus,
@@ -183,6 +184,7 @@ class MissionService {
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
         if (requestingCompany != null && requestingCompany.trim().isNotEmpty)
           'requestingCompany': requestingCompany.trim(),
+        if (clientId != null && clientId > 0) 'clientId': clientId.toString(),
         if (dateStart != null && dateStart.trim().isNotEmpty) 'dateStart': dateStart.trim(),
         if (dateEnd != null && dateEnd.trim().isNotEmpty) 'dateEnd': dateEnd.trim(),
         if (billedStatus != null && billedStatus.trim().isNotEmpty) 'billedStatus': billedStatus.trim(),

@@ -52,6 +52,27 @@ try {
         respond(404, ['success' => false, 'error' => 'Facture introuvable.']);
     }
 
+    // Quand la facture client passe en "validée", promouvoir les missions
+    // associées de Brouillon (0) vers Validée (1). Les missions annulées (9)
+    // ne sont jamais modifiées.
+    if ($statusCode === 'validated') {
+        $missionRefs = $pdo->prepare(
+            "SELECT DISTINCT mission_ref FROM tble_client_billed WHERE invoice_number = :invoice"
+        );
+        $missionRefs->execute([':invoice' => $invoiceNumber]);
+        $refs = $missionRefs->fetchAll(PDO::FETCH_COLUMN);
+        if (!empty($refs)) {
+            $placeholders = implode(',', array_fill(0, count($refs), '?'));
+            $upd = $pdo->prepare(
+                "UPDATE llx_missionsplanet_mission
+                 SET status = 1
+                 WHERE ref IN ($placeholders)
+                   AND status = 0"   // uniquement les brouillons
+            );
+            $upd->execute($refs);
+        }
+    }
+
     respond(200, [
         'success' => true,
         'invoice_number' => $invoiceNumber,

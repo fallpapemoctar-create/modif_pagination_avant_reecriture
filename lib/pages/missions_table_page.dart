@@ -52,7 +52,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   List<Map<String, dynamic>> _missions = [];
   int _total = 0;
   int _page = 1;
-  int _pageSize = 25;
+  int _pageSize = 1000;
   bool _busy = false;
 
   String _statusFilter = 'Tous';
@@ -91,7 +91,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   List<_AutocompleteEntry<String>> _languageEntries =
       <_AutocompleteEntry<String>>[];
   _MissionWorkspaceView _activeView = _MissionWorkspaceView.table;
-  bool _sidebarCollapsed = false;
+  bool _sidebarCollapsed = true;
   bool _filtersCollapsed = true;
   final Set<int> _selectedRowIds = <int>{};
   final Set<int> _deselectedRowIds = <int>{};
@@ -112,6 +112,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     'mobile': true,
     'facture': true,
     'statut': true,
+    'factureClient': true,
     'createur': true,
     'datecrea': true,
     'dateModif': false,
@@ -901,6 +902,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     buildSwitch('typeMission', 'Type de mission'),
                     buildSwitch('facture', 'Facture interprète'),
                     buildSwitch('statut', 'Statut mission'),
+                    buildSwitch('factureClient', 'Facture client'),
                     buildSwitch('createur', 'Créé par'),
                     buildSwitch('datecrea', 'Date création'),
                     buildSwitch('dateModif', 'Date modification'),
@@ -1355,7 +1357,6 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
         top: spacing / 4,
         left: spacing / 2,
         right: spacing / 2,
-        bottom: spacing / 2,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1382,14 +1383,28 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       ),
                     ),
                     child: Row(
-                      children: const [
-                        Icon(Icons.table_rows, color: Color(0xFF000091)),
-                        SizedBox(width: 8),
-                        Text(
+                      children: [
+                        const Icon(Icons.table_rows, color: Color(0xFF000091)),
+                        const SizedBox(width: 8),
+                        const Text(
                           'Tableau des missions',
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
-                        Spacer(),
+                        const Spacer(),
+                        if (_busy)
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          Text(
+                            '$_total mission${_total > 1 ? 's' : ''}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -1399,105 +1414,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     color: Color(0xFFE5E7EB),
                   ),
                   Expanded(child: _buildTableArea()),
-                  const Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: Color(0xFFE5E7EB),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: spacing,
-                      vertical: spacing / 1.2,
-                    ),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        bottom: Radius.circular(4),
-                      ),
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final compact = constraints.maxWidth < 720;
-                        final pageSizeDropdown = DropdownButton<int>(
-                          value: _pageSize,
-                          items: const [25, 50, 100]
-                              .map(
-                                (v) => DropdownMenuItem(
-                                  value: v,
-                                  child: Text('Page: $v'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: _busy
-                              ? null
-                              : (v) {
-                                  if (v != null) {
-                                    setState(() {
-                                      _pageSize = v;
-                                    });
-                                    _load(resetPage: true);
-                                  }
-                                },
-                        );
-                        final navigation = Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            ElevatedButton(
-                              onPressed: _busy || _page <= 1
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _page -= 1;
-                                      });
-                                      _load();
-                                    },
-                              child: const Text('Préc.'),
-                            ),
-                            ElevatedButton(
-                              onPressed: _busy || (_page * _pageSize >= _total)
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _page += 1;
-                                      });
-                                      _load();
-                                    },
-                              child: const Text('Suiv.'),
-                            ),
-                          ],
-                        );
-                        final summary = Text('Page $_page • Total $_total');
-                        if (compact) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              pageSizeDropdown,
-                              const SizedBox(height: 8),
-                              navigation,
-                              const SizedBox(height: 8),
-                              summary,
-                            ],
-                          );
-                        }
-                        return Row(
-                          children: [
-                            pageSizeDropdown,
-                            const SizedBox(width: 8),
-                            navigation,
-                            const SizedBox(width: 12),
-                            summary,
-                          ],
-                        );
-                      },
-                    ),
-                  ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          const BrandFooter(),
         ],
       ),
     );
@@ -2224,12 +2144,14 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     );
   }
 
-  DataCell _statusCell(String statusCode) {
+  DataCell _statusCell(String statusCode, {String clientBilledStatus = ''}) {
     const Map<String, double> widths = {'statut': 220};
     final displayStatus = statusCode.trim().isEmpty
         ? '—'
         : _labelForStatus(statusCode);
     final isCancelled = statusCode.trim() == '9';
+    final isClientInvoiced = !isCancelled &&
+        clientBilledStatus == 'validated';
     return DataCell(
       SizedBox(
         width: widths['statut']!,
@@ -2253,6 +2175,120 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     color: Color(0xFFBE123C),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            if (isClientInvoiced)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFF6EE7B7)),
+                ),
+                child: const Text(
+                  'Facturée',
+                  style: TextStyle(
+                    color: Color(0xFF065F46),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  DataCell _clientInvoiceCell(
+    String invoiceNumber,
+    String statusCode,
+    String statusLabel,
+  ) {
+    if (invoiceNumber.isEmpty) {
+      return DataCell(
+        SizedBox(
+          width: 200,
+          child: Text('—', style: const TextStyle(color: Color(0xFF9CA3AF))),
+        ),
+      );
+    }
+
+    // Badge couleur selon le statut
+    Color bgColor;
+    Color borderColor;
+    Color textColor;
+    switch (statusCode) {
+      case 'validated':
+        bgColor = const Color(0xFFECFDF5);
+        borderColor = const Color(0xFF6EE7B7);
+        textColor = const Color(0xFF065F46);
+        break;
+      case 'sent':
+        bgColor = const Color(0xFFEFF6FF);
+        borderColor = const Color(0xFF93C5FD);
+        textColor = const Color(0xFF1D4ED8);
+        break;
+      case 'paid':
+        bgColor = const Color(0xFFF0FDF4);
+        borderColor = const Color(0xFF4ADE80);
+        textColor = const Color(0xFF15803D);
+        break;
+      default:
+        bgColor = const Color(0xFFF9FAFB);
+        borderColor = const Color(0xFFD1D5DB);
+        textColor = const Color(0xFF374151);
+    }
+
+    final label = statusLabel.isNotEmpty ? statusLabel : statusCode;
+
+    return DataCell(
+      SizedBox(
+        width: 200,
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => Navigator.pushNamed(
+                  context,
+                  '/billing',
+                  arguments: BillingPageArguments(
+                    missions: const [],
+                    invoiceNumber: invoiceNumber,
+                  ),
+                ),
+                child: Text(
+                  invoiceNumber,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF000091),
+                    decoration: TextDecoration.underline,
+                    decorationColor: Color(0xFF000091),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            if (label.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -2285,16 +2321,17 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     }
     return Scrollbar(
       thumbVisibility: true,
-      controller: _hScrollCtrl,
+      controller: _vScrollCtrl,
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        controller: _hScrollCtrl,
+        scrollDirection: Axis.vertical,
+        controller: _vScrollCtrl,
+        physics: const AlwaysScrollableScrollPhysics(),
         child: Scrollbar(
           thumbVisibility: true,
-          controller: _vScrollCtrl,
+          controller: _hScrollCtrl,
           child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            controller: _vScrollCtrl,
+            scrollDirection: Axis.horizontal,
+            controller: _hScrollCtrl,
             child: IconTheme(
               data: IconThemeData(color: _primaryBlue),
               child: DataTable(
@@ -2494,6 +2531,15 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                         asc,
                       ),
                     ),
+                  if (_visibleColumns['factureClient'] ?? true)
+                    DataColumn(
+                      label: _sortableHeader('Facture client'),
+                      onSort: (i, asc) => _sortByString(
+                        (m) => (m['client_invoice_number'] ?? '').toString(),
+                        i,
+                        asc,
+                      ),
+                    ),
                   if (_visibleColumns['createur'] ?? true)
                     DataColumn(
                       label: _sortableHeader('Créé par'),
@@ -2589,6 +2635,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   );
                   final updatedBy = (m['updated_by'] ?? '').toString();
                   final statutTxt = (m['mission_status'] ?? '').toString();
+                  final clientBilledStatus = (m['client_billed_status'] ?? '').toString().toLowerCase();
+                  final clientInvoiceNumber = (m['client_invoice_number'] ?? '').toString().trim();
+                  final clientBilledStatusLabel = (m['client_billed_status_label'] ?? '').toString().trim();
                   final cells = <DataCell>[
                     DataCell(
                       Checkbox(
@@ -2674,7 +2723,10 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     );
                   }
                   if (_visibleColumns['statut'] ?? true) {
-                    cells.add(_statusCell(statutTxt));
+                    cells.add(_statusCell(statutTxt, clientBilledStatus: clientBilledStatus));
+                  }
+                  if (_visibleColumns['factureClient'] ?? true) {
+                    cells.add(_clientInvoiceCell(clientInvoiceNumber, clientBilledStatus, clientBilledStatusLabel));
                   }
                   if (_visibleColumns['createur'] ?? true) {
                     cells.add(

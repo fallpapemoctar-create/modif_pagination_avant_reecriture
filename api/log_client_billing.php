@@ -67,6 +67,7 @@ $draftKey = $draftKeyInput !== '' ? $draftKeyInput : null;
 if ($draftKey === null && $clientName !== '' && $periodMonthKey) {
     $draftKey = invoiceDraftKey($clientName, $periodMonthKey);
 }
+$draftIdInput = isset($input['draft_id']) ? (int) $input['draft_id'] : 0;
 $billedAtRaw = $input['billed_at'] ?? null;
 $timestamp = $billedAtRaw ? strtotime((string) $billedAtRaw) : time();
 $timestamp = $timestamp ?: time();
@@ -377,6 +378,14 @@ try {
     if ($draftKey !== null) {
         $cleanupDraftStmt = $pdo->prepare('DELETE FROM tble_client_invoice_lines WHERE draft_key = :draft');
         $cleanupDraftStmt->execute([':draft' => $draftKey]);
+    }
+    // Supprimer la préparation (invoice_draft) après création de la facture
+    if ($draftIdInput > 0) {
+        $tableCheck = $pdo->query("SHOW TABLES LIKE 'invoice_draft'");
+        if ($tableCheck && $tableCheck->rowCount() > 0) {
+            $pdo->prepare('DELETE FROM invoice_draft WHERE id = :id')
+                ->execute([':id' => $draftIdInput]);
+        }
     }
 
     // Recalcule le total réel depuis les lignes insérées et met à jour invoice_total_ht

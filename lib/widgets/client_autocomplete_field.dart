@@ -29,6 +29,7 @@ class ClientAutocompleteField extends StatefulWidget {
     required this.onChanged,
     this.onSubmitted,
     this.onSelected,
+    this.onSummarySelected,
     this.hintText,
     this.enabled = true,
     this.autofocus = false,
@@ -40,6 +41,8 @@ class ClientAutocompleteField extends StatefulWidget {
   final String value;
   final ValueChanged<String>? onSubmitted;
   final ValueChanged<String>? onSelected;
+  /// Called when a client is selected from the dropdown, with the full summary (including numeric id).
+  final ValueChanged<ClientSummary>? onSummarySelected;
   final ValueChanged<String> onChanged;
   final String? hintText;
   final bool enabled;
@@ -57,6 +60,7 @@ class _ClientAutocompleteFieldState extends State<ClientAutocompleteField> {
   late final FocusNode _focusNode;
   final GlobalKey _autocompleteKey = GlobalKey();
   final List<String> _options = <String>[];
+  final List<ClientSummary> _summaries = <ClientSummary>[];
   Timer? _debounce;
   bool _loading = false;
   int _requestToken = 0;
@@ -108,14 +112,17 @@ class _ClientAutocompleteFieldState extends State<ClientAutocompleteField> {
     setState(() => _loading = true);
     widget.onLoadingChanged?.call(true);
     try {
-      final results = await ClientService.getClients(query: query, limit: 30);
+      final summaries = await ClientService.getClientSummaries(query: query, limit: 30);
       if (!mounted || target != _requestToken) {
         return;
       }
       setState(() {
+        _summaries
+          ..clear()
+          ..addAll(summaries);
         _options
           ..clear()
-          ..addAll(results);
+          ..addAll(summaries.map((s) => s.name));
         _loading = false;
       });
       widget.onLoadingChanged?.call(false);
@@ -124,6 +131,7 @@ class _ClientAutocompleteFieldState extends State<ClientAutocompleteField> {
       if (!mounted) return;
       setState(() {
         _options.clear();
+        _summaries.clear();
         _loading = false;
       });
       widget.onLoadingChanged?.call(false);
@@ -162,6 +170,11 @@ class _ClientAutocompleteFieldState extends State<ClientAutocompleteField> {
       onSelected: (selection) {
         widget.onChanged(selection);
         widget.onSelected?.call(selection);
+        // Emit the full ClientSummary (with numeric id) when available
+        if (widget.onSummarySelected != null) {
+          final match = _summaries.where((s) => s.name == selection).firstOrNull;
+          if (match != null) widget.onSummarySelected!(match);
+        }
       },
       fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
         return TextField(

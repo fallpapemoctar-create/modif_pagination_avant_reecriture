@@ -190,9 +190,11 @@ import '../widgets/client_autocomplete_field.dart';
 	*/
 
 class BillingPageArguments {
-  const BillingPageArguments({required this.missions});
+  const BillingPageArguments({required this.missions, this.invoiceNumber});
 
   final List<Map<String, dynamic>> missions;
+  /// Quand renseigné, la page s'ouvre directement sur cette facture (section Factures).
+  final String? invoiceNumber;
 }
 
 enum BillingSection { creation, invoices, preparations }
@@ -212,9 +214,10 @@ class _BillingPageState extends State<BillingPage> {
   static const Set<String> _billableMissionStatuses = <String>{'0', '1'};
 
   BillingSection _activeSection = BillingSection.creation;
-  bool _sidebarCollapsed = false;
+  bool _sidebarCollapsed = true;
 
   String _clientInput = '';
+  int? _selectedClientId; // numeric fk_soc — set when a client is picked from autocomplete
   String? _loadError;
   bool _loadingMissions = false;
   bool _isTableFullscreen = false;
@@ -275,13 +278,15 @@ class _BillingPageState extends State<BillingPage> {
   String _invoiceSortColumn = 'invoiceNumber';
   bool _invoiceSortAscending = false;
   int _invoicePage = 1;
-  final int _invoicePageSize = 25;
+  final int _invoicePageSize = 1000;
   int _invoiceTotal = 0;
   String _invoiceClientFilter = 'Tous les clients';
   String _invoiceMonthFilter = 'Tous les mois';
   String _invoiceStatusFilter = 'Tous les statuts';
   String _invoiceSearchQuery = '';
   String? _invoiceError;
+  bool _routeArgsHandled = false;
+  String? _pendingOpenInvoiceNumber;
   final ScrollController _invoiceScrollController = ScrollController();
   final ScrollController _invoiceHorizontalController = ScrollController();
   ClientInvoiceSummary? _selectedInvoice;
@@ -437,12 +442,33 @@ class _BillingPageState extends State<BillingPage> {
     unawaited(_loadCompanyBankAccounts());
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeArgsHandled) return;
+    _routeArgsHandled = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is BillingPageArguments &&
+        args.invoiceNumber != null &&
+        args.invoiceNumber!.trim().isNotEmpty) {
+      _pendingOpenInvoiceNumber = args.invoiceNumber!.trim();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _activeSection = BillingSection.invoices);
+        unawaited(_loadInvoices(reset: true));
+      });
+    }
+  }
+
   Widget _buildInvoiceListFooter({
     required List<ClientInvoiceSummary> invoices,
-    required int totalPages,
     required bool compact,
   }) {
-    final totalDisplayed = invoices.fold<double>(
+    final activeInvoices = invoices.where(
+      (inv) => inv.statusCode.trim().toLowerCase() != 'cancelled' &&
+          _invoiceStatusLabelFor(inv) != 'Annulée',
+    );
+    final totalDisplayed = activeInvoices.fold<double>(
       0,
       (sum, invoice) =>
           sum +
@@ -452,32 +478,6 @@ class _BillingPageState extends State<BillingPage> {
     );
     final summary =
         '${invoices.length} facture${invoices.length > 1 ? 's' : ''} affichée${invoices.length > 1 ? 's' : ''}';
-    final controls = Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        OutlinedButton.icon(
-          onPressed: _invoicePage > 1 && !_loadingInvoices
-              ? () {
-                  setState(() => _invoicePage -= 1);
-                  _loadInvoices();
-                }
-              : null,
-          icon: const Icon(Icons.chevron_left),
-          label: const Text('Préc.'),
-        ),
-        FilledButton.icon(
-          onPressed: _invoicePage < totalPages && !_loadingInvoices
-              ? () {
-                  setState(() => _invoicePage += 1);
-                  _loadInvoices();
-                }
-              : null,
-          icon: const Icon(Icons.chevron_right),
-          label: const Text('Suiv.'),
-        ),
-      ],
-    );
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
@@ -495,30 +495,7 @@ class _BillingPageState extends State<BillingPage> {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        child: compact
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    summary,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Total: ${_formatCurrency(totalDisplayed)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  controls,
-                ],
-              )
-            : Row(
+        child: Row(
                 children: [
                   Expanded(
                     child: Text(
@@ -536,8 +513,6 @@ class _BillingPageState extends State<BillingPage> {
                       color: Color(0xFF334155),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  controls,
                 ],
               ),
       ),
@@ -887,7 +862,11 @@ class _BillingPageState extends State<BillingPage> {
                 hintText: 'Sélectionner un client',
                 onChanged: (value) => setState(() {
                   _clientInput = value;
+                  _selectedClientId = null; // reset when user types manually
                   _creationClientInvoices.clear();
+                }),
+                onSummarySelected: (summary) => setState(() {
+                  _selectedClientId = summary.id > 0 ? summary.id : null;
                 }),
                 onSelected: (_) {},
                 onSubmitted: (_) {},
@@ -1986,7 +1965,6 @@ class _BillingPageState extends State<BillingPage> {
       );
     }
     final invoices = _filteredInvoicesForDisplay;
-    final totalPages = (_invoiceTotal / _invoicePageSize).ceil().clamp(1, 9999);
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 1240;
@@ -2007,7 +1985,6 @@ class _BillingPageState extends State<BillingPage> {
             const SizedBox(height: 12),
             _buildInvoiceListFooter(
               invoices: invoices,
-              totalPages: totalPages,
               compact: isCompact,
             ),
           ],
@@ -5269,13 +5246,19 @@ class _BillingPageState extends State<BillingPage> {
     setState(() {
       _loadingMissions = true;
       _loadError = null;
+      _draftId = null;
+      _draftKey = null;
     });
     final normalized = client.toLowerCase();
+    final capturedClientId = _selectedClientId;
     try {
-      final missions = await MissionService.getMissionsDatatableAll(q: client);
+      final missions = await MissionService.getMissionsDatatableAll(
+        q: capturedClientId != null ? null : client,
+        clientId: capturedClientId,
+      );
       if (!mounted) return;
       final filtered = missions
-          .where((mission) => _missionMatchesClient(mission, normalized))
+          .where((mission) => _missionMatchesClient(mission, normalized, capturedClientId))
           .where(_isMissionEligibleForBilling)
           .map((mission) => Map<String, dynamic>.from(mission))
           .toList();
@@ -5690,10 +5673,11 @@ class _BillingPageState extends State<BillingPage> {
         pdfFilename: pdfFile.filename,
         periodMonth: _selectedMonth,
         draftKey: _draftKey,
+        draftId: _draftId,
         notes: _buildInvoiceCreationNotes(),
       );
       if (mounted) {
-        setState(() => _draftKey = null);
+        setState(() { _draftKey = null; _draftId = null; });
       }
       await _loadCreationInvoicesForClient(force: true);
       await _loadInvoices(reset: true);
@@ -6381,6 +6365,7 @@ class _BillingPageState extends State<BillingPage> {
                 _invoiceClientFilter == 'Tous les clients'
             ? null
             : _invoiceClientFilter,
+        invoiceNumber: _pendingOpenInvoiceNumber,
       );
       if (!mounted) return;
       final previouslySelected = _selectedInvoice;
@@ -6419,7 +6404,27 @@ class _BillingPageState extends State<BillingPage> {
             _loadingInvoiceLinesPanel = false;
           }
         }
+        // Auto-ouverture si navigation depuis le tableau des missions
+        if (_pendingOpenInvoiceNumber != null && _selectedInvoice == null) {
+          final pending = _pendingOpenInvoiceNumber!;
+          final match = _invoices.cast<ClientInvoiceSummary?>().firstWhere(
+            (inv) => inv?.invoiceNumber == pending,
+            orElse: () => null,
+          );
+          if (match != null) {
+            _pendingOpenInvoiceNumber = null;
+            _selectedInvoice = match;
+            _selectedInvoiceMissionRef = match.missionRef;
+            _loadingInvoiceLinesPanel = true;
+            _selectedInvoiceLineEditors.clear();
+            _selectedInvoiceLines = null;
+          }
+        }
       });
+      // Charger les lignes si auto-ouverture
+      if (_pendingOpenInvoiceNumber == null && _selectedInvoice != null && _loadingInvoiceLinesPanel) {
+        _loadInvoiceLines(_selectedInvoice!);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -6980,17 +6985,24 @@ class _BillingPageState extends State<BillingPage> {
 
   bool _missionMatchesClient(
     Map<String, dynamic> mission,
-    String normalizedClient,
-  ) {
+    String normalizedClient, [
+    int? clientId,
+  ]) {
+    // Prefer exact ID match when the user selected a client from the autocomplete
+    if (clientId != null && clientId > 0) {
+      final missionClientId =
+          mission['client_id'] is int
+              ? mission['client_id'] as int
+              : int.tryParse(mission['client_id']?.toString() ?? '') ?? 0;
+      return missionClientId == clientId;
+    }
+    // Fallback: name-based exact equality (avoids cross-contamination between
+    // similarly-named structures such as sub-entities of the same group)
     final clientName =
         (mission['client_name'] ?? mission['nom'] ?? mission['company'] ?? '')
             .toString()
             .toLowerCase();
-    if (clientName.contains(normalizedClient)) return true;
-    final ref = (mission['reference_devis'] ?? mission['ref'] ?? '')
-        .toString()
-        .toLowerCase();
-    return ref.contains(normalizedClient);
+    return clientName == normalizedClient;
   }
 
   List<String> _clientAddressLinesForPdf() {

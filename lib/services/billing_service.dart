@@ -124,6 +124,7 @@ class BillingService {
     String? pdfFilename,
     DateTime? periodMonth,
     String? draftKey,
+    int? draftId,
     String? notes,
   }) async {
     final payload = {
@@ -146,6 +147,7 @@ class BillingService {
         'pdf_filename': pdfFilename.trim(),
       if (pdfBytes != null) 'pdf_base64': base64Encode(pdfBytes),
       if (draftKey != null && draftKey.isNotEmpty) 'draft_key': draftKey,
+      if (draftId != null && draftId > 0) 'draft_id': draftId,
       if (notes != null && notes.isNotEmpty) 'notes': notes,
     };
 
