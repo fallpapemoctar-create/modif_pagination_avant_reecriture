@@ -1413,6 +1413,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                     thickness: 1,
                     color: Color(0xFFE5E7EB),
                   ),
+                  _buildMissionPaginationToolbar(),
                   Expanded(child: _buildTableArea()),
                 ],
               ),
@@ -2294,6 +2295,101 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMissionPaginationToolbar() {
+    const pageSizes = [50, 100, 250, 500, 1000, 5000];
+    final int pageCount = _pageSize > 0 ? ((_total + _pageSize - 1) ~/ _pageSize).clamp(1, 99999) : 1;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+      ),
+      child: Row(
+        children: [
+          const Text('Lignes :', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+          const SizedBox(width: 6),
+          DropdownButton<int>(
+            value: pageSizes.contains(_pageSize) ? _pageSize : 1000,
+            isDense: true,
+            underline: const SizedBox.shrink(),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF111827)),
+            items: pageSizes
+                .map((s) => DropdownMenuItem(value: s, child: Text('$s')))
+                .toList(),
+            onChanged: _busy
+                ? null
+                : (v) {
+                    if (v == null || v == _pageSize) return;
+                    setState(() {
+                      _pageSize = v;
+                      _page = 1;
+                    });
+                    _load();
+                  },
+          ),
+          const SizedBox(width: 16),
+          Text(
+            '$_total mission${_total > 1 ? 's' : ''}',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.first_page, size: 18),
+            tooltip: 'Première page',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: (_busy || _page <= 1)
+                ? null
+                : () {
+                    setState(() => _page = 1);
+                    _load();
+                  },
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_left, size: 18),
+            tooltip: 'Page précédente',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: (_busy || _page <= 1)
+                ? null
+                : () {
+                    setState(() => _page = _page - 1);
+                    _load();
+                  },
+          ),
+          Text(
+            'Page $_page / $pageCount',
+            style: const TextStyle(fontSize: 12),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right, size: 18),
+            tooltip: 'Page suivante',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: (_busy || _page >= pageCount)
+                ? null
+                : () {
+                    setState(() => _page = _page + 1);
+                    _load();
+                  },
+          ),
+          IconButton(
+            icon: const Icon(Icons.last_page, size: 18),
+            tooltip: 'Dernière page',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: (_busy || _page >= pageCount)
+                ? null
+                : () {
+                    setState(() => _page = pageCount);
+                    _load();
+                  },
+          ),
+        ],
       ),
     );
   }

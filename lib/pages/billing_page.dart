@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, unnecessary_underscores, prefer_final_fields
+// ignore_for_file: unused_field, use_build_context_synchronously, unnecessary_underscores, prefer_final_fields
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -240,8 +240,14 @@ class _BillingPageState extends State<BillingPage> {
   bool _savingDraft = false;
   bool _savingDraftHeader = false;
   String? _draftKey;
-  // AMI v1.3 : identifiant du draft persist\u00e9 (null si pas de draft enregistr\u00e9 via save_invoice_draft.php)
+  // AMI v1.3 : identifiant du draft persisté (null si pas de draft enregistré via save_invoice_draft.php)
   int? _draftId;
+
+  // Pagination du tableau des lignes de mission
+  int _missionTablePage = 1;
+  int _missionTablePageSize = 100;
+  String _missionTableSearch = '';
+  final TextEditingController _missionTableSearchCtrl = TextEditingController();
 
   TextEditingController? _lineDesignationCtrl;
   TextEditingController? _lineQuantityCtrl;
@@ -372,7 +378,7 @@ class _BillingPageState extends State<BillingPage> {
                     const SizedBox(height: 4),
                     Expanded(
                       child: _loadingMissions
-                          ? const Center(child: CircularProgressIndicator())
+                          ? _buildMissionsLoadingState()
                           : _lineEditors.isEmpty
                               ? _buildEmptyState()
                               : Stack(
@@ -559,6 +565,7 @@ class _BillingPageState extends State<BillingPage> {
     _lineUnitPriceCtrl?.dispose();
     _lineNotesCtrl?.dispose();
     _invoiceSearchController.dispose();
+    _missionTableSearchCtrl.dispose();
     _draftSaveTimer?.cancel();
     _createInvoiceFeedbackTimer?.cancel();
     super.dispose();
@@ -1377,10 +1384,13 @@ class _BillingPageState extends State<BillingPage> {
             ),
           ),
           const Divider(height: 1, color: borderColor),
+          _buildMissionTableToolbar(spacing),
+          const Divider(height: 1, color: borderColor),
           Expanded(
             child: _buildLinesTable(
               verticalController: _tableVerticalController,
               horizontalController: _tableHorizontalController,
+              indexedEditors: _paginatedIndexedEditors,
             ),
           ),
           const Divider(height: 1, color: borderColor),
@@ -1607,6 +1617,99 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
+  Widget _buildMissionsLoadingState() {
+    const borderRadius = 10.0;
+    const borderColor = Color(0xFFE5E7EB);
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(borderRadius),
+        side: const BorderSide(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(borderRadius),
+              ),
+            ),
+            child: Row(
+              children: const [
+                Icon(Icons.table_rows, color: Color(0xFF000091)),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Chargement des missions en cours\u2026',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF000091),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: borderColor),
+          Expanded(
+            child: ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 8,
+              separatorBuilder: (_, __) =>
+                  const Divider(height: 1, color: borderColor),
+              itemBuilder: (_, __) => Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    _buildSkeletonBox(width: 32, height: 12),
+                    const SizedBox(width: 16),
+                    _buildSkeletonBox(width: 80, height: 12),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildSkeletonBox(height: 12)),
+                    const SizedBox(width: 16),
+                    _buildSkeletonBox(width: 52, height: 12),
+                    const SizedBox(width: 16),
+                    _buildSkeletonBox(width: 64, height: 12),
+                    const SizedBox(width: 16),
+                    _buildSkeletonBox(width: 64, height: 12),
+                    const SizedBox(width: 16),
+                    _buildSkeletonBox(width: 48, height: 12),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonBox({double? width, required double height}) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE5E7EB),
+        borderRadius: BorderRadius.circular(4),
+      ),
+    );
+  }
+
   Widget _buildInvoiceFilters() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1627,194 +1730,161 @@ class _BillingPageState extends State<BillingPage> {
         );
 
         final filterFields = [
-          _buildToolbarField(
-            label: 'Recherche rapide',
-            width: isCompact ? null : 320,
-            child: TextFormField(
-              controller: _invoiceSearchController,
-              style: const TextStyle(fontSize: 12),
-              decoration: InputDecoration(
-                hintText: 'Rechercher une facture, un client ou un mois...',
-                hintStyle: const TextStyle(fontSize: 12),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _invoiceSearchQuery.trim().isEmpty
-                    ? null
-                    : IconButton(
-                        onPressed: () {
-                          _invoiceSearchController.clear();
-                          setState(() => _invoiceSearchQuery = '');
-                        },
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Effacer',
-                      ),
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                ),
+          TextFormField(
+            controller: _invoiceSearchController,
+            style: const TextStyle(fontSize: 12),
+            decoration: InputDecoration(
+              hintText: 'Rechercher une facture, un client ou un mois...',
+              hintStyle: const TextStyle(fontSize: 12),
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 18),
+              suffixIcon: _invoiceSearchQuery.trim().isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        _invoiceSearchController.clear();
+                        setState(() => _invoiceSearchQuery = '');
+                      },
+                      icon: const Icon(Icons.close, size: 16),
+                      tooltip: 'Effacer',
+                    ),
+              filled: true,
+              fillColor: const Color(0xFFF8FAFC),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
-              onChanged: (value) => setState(() => _invoiceSearchQuery = value),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
             ),
+            onChanged: (value) => setState(() => _invoiceSearchQuery = value),
           ),
-          _buildToolbarField(
-            label: 'Période',
-            width: isCompact ? null : 205,
-            child: _buildInvoiceFilterDropdown(
-              value: _invoiceMonthFilter,
-              items: _invoiceMonthOptions,
-              icon: Icons.calendar_month_outlined,
-              onChanged: (value) =>
-                  setState(() => _invoiceMonthFilter = value ?? 'Tous les mois'),
-            ),
+          _buildInvoiceFilterDropdown(
+            value: _invoiceMonthFilter,
+            items: _invoiceMonthOptions,
+            icon: Icons.calendar_month_outlined,
+            onChanged: (value) =>
+                setState(() => _invoiceMonthFilter = value ?? 'Tous les mois'),
           ),
-          _buildToolbarField(
-            label: 'Statut',
-            width: isCompact ? null : 205,
-            child: _buildInvoiceFilterDropdown(
-              value: _invoiceStatusFilter,
-              items: _invoiceStatusOptions,
-              icon: Icons.flag_outlined,
-              onChanged: (value) {
-                final next = value ?? 'Tous les statuts';
-                setState(() => _invoiceStatusFilter = next);
-                _loadInvoices(reset: true);
-              },
-            ),
+          _buildInvoiceFilterDropdown(
+            value: _invoiceStatusFilter,
+            items: _invoiceStatusOptions,
+            icon: Icons.flag_outlined,
+            onChanged: (value) {
+              final next = value ?? 'Tous les statuts';
+              setState(() => _invoiceStatusFilter = next);
+              _loadInvoices(reset: true);
+            },
           ),
-          _buildToolbarField(
-            label: 'Client',
-            width: isCompact ? null : 220,
-            child: _buildInvoiceFilterDropdown(
-              value: _invoiceClientFilter,
-              items: _invoiceClientOptions,
-              icon: Icons.business_outlined,
-              onChanged: (value) {
-                final next = value ?? 'Tous les clients';
-                setState(() => _invoiceClientFilter = next);
-                _loadInvoices(reset: true);
-              },
-            ),
+          _buildInvoiceFilterDropdown(
+            value: _invoiceClientFilter,
+            items: _invoiceClientOptions,
+            icon: Icons.business_outlined,
+            onChanged: (value) {
+              final next = value ?? 'Tous les clients';
+              setState(() => _invoiceClientFilter = next);
+              _loadInvoices(reset: true);
+            },
           ),
-          _buildToolbarField(
-            label: 'Action',
-            width: isCompact ? null : 190,
-            child: SizedBox(
-              width: double.infinity,
-              child: refreshButton,
-            ),
+          SizedBox(
+            width: double.infinity,
+            child: refreshButton,
           ),
         ];
 
         if (!isCompact) {
           return Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFD7E0EA)),
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   flex: 30,
-                  child: _buildToolbarField(
-                    label: 'Recherche rapide',
-                    child: TextFormField(
-                      controller: _invoiceSearchController,
-                      style: const TextStyle(fontSize: 12),
-                      decoration: InputDecoration(
-                        hintText: 'Rechercher une facture, un client ou un mois...',
-                        hintStyle: const TextStyle(fontSize: 12),
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: _invoiceSearchQuery.trim().isEmpty
-                            ? null
-                            : IconButton(
-                                onPressed: () {
-                                  _invoiceSearchController.clear();
-                                  setState(() => _invoiceSearchQuery = '');
-                                },
-                                icon: const Icon(Icons.close),
-                                tooltip: 'Effacer',
-                              ),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
+                  child: TextFormField(
+                    controller: _invoiceSearchController,
+                    style: const TextStyle(fontSize: 12),
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher une facture, un client ou un mois...',
+                      hintStyle: const TextStyle(fontSize: 12),
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      suffixIcon: _invoiceSearchQuery.trim().isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _invoiceSearchController.clear();
+                                setState(() => _invoiceSearchQuery = '');
+                              },
+                              icon: const Icon(Icons.close, size: 16),
+                              tooltip: 'Effacer',
+                            ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                       ),
-                      onChanged: (value) =>
-                          setState(() => _invoiceSearchQuery = value),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 18,
-                  child: _buildToolbarField(
-                    label: 'Période',
-                    child: _buildInvoiceFilterDropdown(
-                      value: _invoiceMonthFilter,
-                      items: _invoiceMonthOptions,
-                      icon: Icons.calendar_month_outlined,
-                      onChanged: (value) => setState(
-                        () => _invoiceMonthFilter = value ?? 'Tous les mois',
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                       ),
                     ),
+                    onChanged: (value) =>
+                        setState(() => _invoiceSearchQuery = value),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   flex: 18,
-                  child: _buildToolbarField(
-                    label: 'Statut',
-                    child: _buildInvoiceFilterDropdown(
-                      value: _invoiceStatusFilter,
-                      items: _invoiceStatusOptions,
-                      icon: Icons.flag_outlined,
-                      onChanged: (value) {
-                        final next = value ?? 'Tous les statuts';
-                        setState(() => _invoiceStatusFilter = next);
-                        _loadInvoices(reset: true);
-                      },
+                  child: _buildInvoiceFilterDropdown(
+                    value: _invoiceMonthFilter,
+                    items: _invoiceMonthOptions,
+                    icon: Icons.calendar_month_outlined,
+                    onChanged: (value) => setState(
+                      () => _invoiceMonthFilter = value ?? 'Tous les mois',
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 18,
+                  child: _buildInvoiceFilterDropdown(
+                    value: _invoiceStatusFilter,
+                    items: _invoiceStatusOptions,
+                    icon: Icons.flag_outlined,
+                    onChanged: (value) {
+                      final next = value ?? 'Tous les statuts';
+                      setState(() => _invoiceStatusFilter = next);
+                      _loadInvoices(reset: true);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   flex: 20,
-                  child: _buildToolbarField(
-                    label: 'Client',
-                    child: _buildInvoiceFilterDropdown(
-                      value: _invoiceClientFilter,
-                      items: _invoiceClientOptions,
-                      icon: Icons.business_outlined,
-                      onChanged: (value) {
-                        final next = value ?? 'Tous les clients';
-                        setState(() => _invoiceClientFilter = next);
-                        _loadInvoices(reset: true);
-                      },
-                    ),
+                  child: _buildInvoiceFilterDropdown(
+                    value: _invoiceClientFilter,
+                    items: _invoiceClientOptions,
+                    icon: Icons.business_outlined,
+                    onChanged: (value) {
+                      final next = value ?? 'Tous les clients';
+                      setState(() => _invoiceClientFilter = next);
+                      _loadInvoices(reset: true);
+                    },
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 SizedBox(
-                  width: 176,
-                  child: _buildToolbarField(
-                    label: 'Action',
-                    child: SizedBox(width: double.infinity, child: refreshButton),
-                  ),
+                  width: 158,
+                  child: SizedBox(width: double.infinity, child: refreshButton),
                 ),
               ],
             ),
@@ -1854,14 +1924,7 @@ class _BillingPageState extends State<BillingPage> {
         border: Border.all(color: const Color(0xFFD7E0EA)),
       ),
       child: compact
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildInvoiceFilterFieldsIntro(),
-                const SizedBox(height: 14),
-                fieldsContent,
-              ],
-            )
+          ? fieldsContent
           : Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1923,15 +1986,16 @@ class _BillingPageState extends State<BillingPage> {
       isExpanded: true,
       icon: const Icon(Icons.keyboard_arrow_down_rounded),
       decoration: InputDecoration(
-        prefixIcon: Icon(icon),
+        prefixIcon: Icon(icon, size: 18),
+        isDense: true,
         filled: true,
         fillColor: const Color(0xFFF8FAFC),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
       ),
@@ -2947,10 +3011,137 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
+  Widget _buildMissionTableToolbar(double spacing) {
+    const pageSizes = <int>[50, 100, 250, 500, 1000, 5000];
+    final filteredCount = _missionTableFilteredCount;
+    final pageCount = _missionTablePageCount;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      color: const Color(0xFFF8FAFC),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 210,
+            child: TextField(
+              controller: _missionTableSearchCtrl,
+              style: const TextStyle(fontSize: 12),
+              decoration: InputDecoration(
+                hintText: 'Filtrer les lignes...',
+                hintStyle: const TextStyle(fontSize: 12),
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 16),
+                suffixIcon: _missionTableSearch.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () => setState(() {
+                          _missionTableSearch = '';
+                          _missionTableSearchCtrl.clear();
+                          _missionTablePage = 1;
+                        }),
+                        icon: const Icon(Icons.close, size: 14),
+                        tooltip: 'Effacer le filtre',
+                      ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+              ),
+              onChanged: (value) => setState(() {
+                _missionTableSearch = value;
+                _missionTablePage = 1;
+              }),
+            ),
+          ),
+          const SizedBox(width: 10),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: pageSizes.contains(_missionTablePageSize)
+                  ? _missionTablePageSize
+                  : pageSizes.first,
+              isDense: true,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF374151)),
+              items: pageSizes
+                  .map(
+                    (s) => DropdownMenuItem<int>(
+                      value: s,
+                      child: Text('$s / page'),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) => setState(() {
+                if (value != null) {
+                  _missionTablePageSize = value;
+                  _missionTablePage = 1;
+                }
+              }),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _missionTableSearch.trim().isEmpty
+                ? '$filteredCount ligne(s)'
+                : '$filteredCount / ${_lineEditors.length} ligne(s)',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          ),
+          const Spacer(),
+          IconButton(
+            onPressed: _missionTablePage > 1
+                ? () => setState(() => _missionTablePage = 1)
+                : null,
+            icon: const Icon(Icons.first_page, size: 18),
+            tooltip: 'Première page',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
+          IconButton(
+            onPressed: _missionTablePage > 1
+                ? () => setState(() => _missionTablePage--)
+                : null,
+            icon: const Icon(Icons.chevron_left, size: 18),
+            tooltip: 'Page précédente',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
+          Text(
+            'Page $_missionTablePage / $pageCount',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+          IconButton(
+            onPressed: _missionTablePage < pageCount
+                ? () => setState(() => _missionTablePage++)
+                : null,
+            icon: const Icon(Icons.chevron_right, size: 18),
+            tooltip: 'Page suivante',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
+          IconButton(
+            onPressed: _missionTablePage < pageCount
+                ? () => setState(() => _missionTablePage = pageCount)
+                : null,
+            icon: const Icon(Icons.last_page, size: 18),
+            tooltip: 'Dernière page',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLinesTable({
     required ScrollController verticalController,
     required ScrollController horizontalController,
     double minWidth = 1100,
+    List<MapEntry<int, _EditableInvoiceLine>>? indexedEditors,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -3040,9 +3231,7 @@ class _BillingPageState extends State<BillingPage> {
                       ),
                     ),
                   ],
-                  rows: _lineEditors
-                      .asMap()
-                      .entries
+                  rows: (indexedEditors ?? _lineEditors.asMap().entries.toList())
                       .map(
                         (entry) =>
                             _buildRow(entry.key, entry.value, columnWidths),
@@ -3099,11 +3288,14 @@ class _BillingPageState extends State<BillingPage> {
                       ),
                     ),
                     const Divider(height: 1, color: Color(0xFFE5E7EB)),
+                    _buildMissionTableToolbar(spacing),
+                    const Divider(height: 1, color: Color(0xFFE5E7EB)),
                     Expanded(
                       child: _buildLinesTable(
                         verticalController: _fullscreenVerticalController,
                         horizontalController: _fullscreenHorizontalController,
                         minWidth: 1200,
+                        indexedEditors: _paginatedIndexedEditors,
                       ),
                     ),
                     const Divider(height: 1, color: Color(0xFFE5E7EB)),
@@ -5265,7 +5457,10 @@ class _BillingPageState extends State<BillingPage> {
       setState(() {
         _allClientMissions = filtered;
         _loadingMissions = false;
+        _missionTablePage = 1;
+        _missionTableSearch = '';
       });
+      _missionTableSearchCtrl.clear();
       await _loadClientPaymentTermsForMissions(filtered);
       await _loadCreationInvoicesForClient(force: true);
       // AMI v1.3 — RM-07 : proposer Reprendre/Ignorer si draft existe
@@ -6502,6 +6697,37 @@ class _BillingPageState extends State<BillingPage> {
   double get _currentTotalTtc =>
       _lineEditors.fold(0, (sum, editor) => sum + editor.currentLine.totalTtc);
 
+  // --- Pagination / filtrage du tableau des lignes ---
+
+  List<MapEntry<int, _EditableInvoiceLine>> get _filteredIndexedEditors {
+    if (_missionTableSearch.trim().isEmpty) {
+      return _lineEditors.asMap().entries.toList();
+    }
+    final q = _missionTableSearch.trim().toLowerCase();
+    return _lineEditors.asMap().entries.where((e) {
+      final line = e.value.currentLine;
+      final ref = (e.value.missionRef ?? line.missionRef ?? '').toLowerCase();
+      final designation = line.designation.toLowerCase();
+      return ref.contains(q) || designation.contains(q);
+    }).toList();
+  }
+
+  int get _missionTableFilteredCount => _filteredIndexedEditors.length;
+
+  int get _missionTablePageCount {
+    final count = _missionTableFilteredCount;
+    if (count == 0) return 1;
+    return (count / _missionTablePageSize).ceil();
+  }
+
+  List<MapEntry<int, _EditableInvoiceLine>> get _paginatedIndexedEditors {
+    final filtered = _filteredIndexedEditors;
+    final start = (_missionTablePage - 1) * _missionTablePageSize;
+    if (start >= filtered.length) return filtered;
+    final end = math.min(start + _missionTablePageSize, filtered.length);
+    return filtered.sublist(start, end);
+  }
+
   bool get _hasRequiredInvoiceSettings =>
       _selectedClientPaymentTerm != null && _selectedCompanyBankAccount != null;
 
@@ -6651,6 +6877,8 @@ class _BillingPageState extends State<BillingPage> {
       _showLinePanel = false;
       _draftKey = null;
       _selectedMonth = _availableMonths.first;
+      _missionTablePage = 1;
+      _missionTableSearch = '';
       _clientPaymentTerms = [];
       _selectedClientPaymentTermId = null;
       _selectedCompanyBankAccountId = defaultBankAccountId;
@@ -6658,6 +6886,7 @@ class _BillingPageState extends State<BillingPage> {
       _loadingCreationClientInvoices = false;
       _createInvoiceState = _CreateInvoiceActionState.idle;
     });
+    _missionTableSearchCtrl.clear();
   }
 
   List<Map<String, dynamic>> _buildBillingMissionsPayload(
