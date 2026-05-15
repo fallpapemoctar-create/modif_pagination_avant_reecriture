@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../core/auth_manager.dart';
 import '../core/user_rights.dart';
+import '../core/app_theme.dart';
+import '../main.dart' show kActiveTheme;
 import 'home_page.dart';
-import '../core/brand_footer.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -15,239 +16,335 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final loginCtrl = TextEditingController();
-  final passCtrl = TextEditingController();
-  final formKey = GlobalKey<FormState>();
+  final _loginCtrl = TextEditingController();
+  final _passCtrl  = TextEditingController();
+  final _formKey   = GlobalKey<FormState>();
 
-  bool loading = false;
-  bool rememberMe = false;
-  bool showPassword = false;
+  bool _loading      = false;
+  bool _rememberMe   = false;
+  bool _showPassword = false;
 
   @override
   void initState() {
     super.initState();
-    rememberMe = AuthManager.rememberMe;
+    _rememberMe = AuthManager.rememberMe;
+  }
+
+  @override
+  void dispose() {
+    _loginCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _loading = true);
+    final data = await AuthService.login(_loginCtrl.text.trim(), _passCtrl.text);
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (data['success'] == true) {
+      AuthManager.setUser(data['user']);
+      AuthManager.setRights(UserRights(List<String>.from(data['rights'])));
+      await AuthManager.persistSession(rememberMe: _rememberMe);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomePage()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(data['message'] ?? 'Erreur de connexion')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 900;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const ColoredBox(color: Color(0xFFF6F6F6)),
-          Center(
+      backgroundColor: AmiTheme.bgLight,
+      body: isDesktop ? _desktopLayout() : _mobileLayout(),
+    );
+  }
+
+  // ── DESKTOP : deux colonnes ───────────────────────────────────────────────
+  Widget _desktopLayout() {
+    return Row(
+      children: [
+        // ── Panneau gauche — hero gradient ──
+        Expanded(
+          flex: 38,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: AmiTheme.heroGradient(kActiveTheme),
+            ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Cadre de connexion
+                // Logo
                 Container(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                  width: 80,
+                  height: 80,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-                    boxShadow: [
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: const [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
+                        color: Color(0x33000000),
+                        blurRadius: 20,
+                        offset: Offset(0, 6),
                       ),
                     ],
                   ),
-                  child: SingleChildScrollView(
-                    child: Form(
-                      key: formKey,
-                      child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Image.asset(
-                          'assets/logo.png',
-                          height: 80,
-                          fit: BoxFit.contain,
-                          errorBuilder: (c, e, s) => const SizedBox.shrink(),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Center(
-                        child: Text(
-                          'Se connecter',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.2,
-                            color: Color(0xFF161616),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Center(
-                        child: Text(
-                          'Accédez à votre espace personnel',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Color(0xFF6A6A6A),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-
-                      const Text(
-                        'Identifiant',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF161616),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: loginCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Votre identifiant',
-                          filled: true,
-                          fillColor: const Color(0xFFF2F2F2),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFCFCFD3)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFF000091), width: 2),
-                          ),
-                        ),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Identifiant obligatoire' : null,
-                      ),
-                      const SizedBox(height: 24),
-
-                      const Text(
-                        'Mot de passe',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF161616),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: passCtrl,
-                        obscureText: !showPassword,
-                        decoration: InputDecoration(
-                          hintText: 'Mot de passe',
-                          filled: true,
-                          fillColor: const Color(0xFFF2F2F2),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFCFCFD3)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFF000091), width: 2),
-                          ),
-                          suffixIcon: IconButton(
-                            onPressed: () => setState(() => showPassword = !showPassword),
-                            icon: Icon(
-                              showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              color: const Color(0xFF6A6A6A),
-                            ),
-                          ),
-                        ),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Mot de passe obligatoire' : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: rememberMe,
-                            onChanged: (val) => setState(() => rememberMe = val ?? false),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            side: const BorderSide(color: Color(0xFFCFCFD3)),
-                            checkColor: Colors.white,
-                            activeColor: const Color(0xFF000091),
-                          ),
-                          const Text(
-                            'Rester connecté',
-                            style: TextStyle(fontSize: 14, color: Colors.black87),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF000091),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            elevation: 0,
-                          ),
-                          onPressed: loading
-                              ? null
-                              : () async {
-                                  if (!formKey.currentState!.validate()) return;
-
-                                  setState(() => loading = true);
-                                  final data = await AuthService.login(loginCtrl.text, passCtrl.text);
-                                  if (!mounted) return;
-                                  setState(() => loading = false);
-
-                                  if (data['success'] == true) {
-                                    AuthManager.setUser(data['user']);
-                                    AuthManager.setRights(UserRights(List<String>.from(data['rights'])));
-                                    await AuthManager.persistSession(rememberMe: rememberMe);
-                                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(data['message'] ?? 'Erreur de connexion')),
-                                    );
-                                  }
-                                },
-                          child: loading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Text('Se connecter', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Divider(height: 1, color: Color(0xFFE5E5EA)),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          TextButton(
-                            onPressed: () {},
-                            style: TextButton.styleFrom(foregroundColor: const Color(0xFF000091)),
-                            child: const Text('Mot de passe oublié ?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      // (Info band removed from inside the card per request)
-                      ],
+                  padding: const EdgeInsets.all(12),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (ctx, err, stk) => const Icon(
+                      Icons.translate,
+                      size: 40,
+                      color: Color(0xFF1B3A8C),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 24),
+                const Text(
+                  'AMI',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Assistance Missions Interprètes',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xCCFFFFFF),
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 48),
+                // Badges fonctionnalités
+                _heroBadge(Icons.people_outline,       'Gestion des interprètes'),
+                const SizedBox(height: 12),
+                _heroBadge(Icons.table_chart_outlined,  'Suivi des missions'),
+                const SizedBox(height: 12),
+                _heroBadge(Icons.receipt_long_outlined, 'Facturation et devis'),
               ],
             ),
           ),
+        ),
+
+        // ── Panneau droit — formulaire ──
+        Expanded(
+          flex: 62,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 64, vertical: 40),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: _formCard(compact: false),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── MOBILE : centré, plein écran ─────────────────────────────────────────
+  Widget _mobileLayout() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Mini hero mobile
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            decoration: BoxDecoration(
+              gradient: AmiTheme.heroGradient(kActiveTheme),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 12)],
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (ctx, err, stk) => const Icon(
+                      Icons.translate, size: 32, color: Color(0xFF1B3A8C)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('AMI',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
+                        color: Colors.white, letterSpacing: 1.5)),
+                const SizedBox(height: 4),
+                const Text('Assistance Missions Interprètes',
+                    style: TextStyle(fontSize: 12, color: Color(0xCCFFFFFF))),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: _formCard(compact: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Formulaire commun ─────────────────────────────────────────────────────
+  Widget _formCard({required bool compact}) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Connexion',
+            style: TextStyle(
+              fontSize: compact ? 20 : 22,   // 28 → 20/22
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF161616),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Accédez à votre espace personnel',
+            style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+          ),
+          const SizedBox(height: 28),
+
+          // ── Identifiant ──
+          const Text('Identifiant',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151))),
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: _loginCtrl,
+            autofocus: !compact,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              hintText: 'Votre identifiant',
+              prefixIcon: Icon(Icons.person_outline, size: 18),
+            ),
+            validator: (v) => (v == null || v.isEmpty) ? 'Identifiant obligatoire' : null,
+          ),
           const SizedBox(height: 16),
-          const BrandFooter(),
+
+          // ── Mot de passe ──
+          const Text('Mot de passe',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151))),
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: _passCtrl,
+            obscureText: !_showPassword,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _loading ? null : _submit(),
+            decoration: InputDecoration(
+              hintText: 'Mot de passe',
+              prefixIcon: const Icon(Icons.lock_outline, size: 18),
+              suffixIcon: IconButton(
+                onPressed: () => setState(() => _showPassword = !_showPassword),
+                icon: Icon(
+                  _showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  size: 18,
+                  color: const Color(0xFF6A6A6A),
+                ),
+              ),
+            ),
+            validator: (v) => (v == null || v.isEmpty) ? 'Mot de passe obligatoire' : null,
+          ),
+          const SizedBox(height: 12),
+
+          // ── Rester connecté ──
+          Row(
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: Checkbox(
+                  value: _rememberMe,
+                  onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('Rester connecté',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF374151))),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // ── Bouton ──
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                elevation: 0,
+              ),
+              onPressed: _loading ? null : _submit,
+              child: _loading
+                  ? const SizedBox(height: 18, width: 18,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Se connecter',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Mot de passe oublié ──
+          TextButton(
+            onPressed: () {},
+            style: TextButton.styleFrom(
+              foregroundColor: primary,
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+            ),
+            child: const Text('Mot de passe oublié ?',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Badge hero (panneau gauche desktop) ──────────────────────────────────
+  Widget _heroBadge(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.90)),
+          const SizedBox(width: 8),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.90),
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );

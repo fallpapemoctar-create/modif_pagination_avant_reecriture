@@ -52,7 +52,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   List<Map<String, dynamic>> _missions = [];
   int _total = 0;
   int _page = 1;
-  int _pageSize = 1000;
+  int _pageSize = 25;
   bool _busy = false;
 
   String _statusFilter = 'Tous';
@@ -1678,9 +1678,62 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
     );
   }
 
+  /// Construit une rangée de FilterChips pour un groupe de filtres.
+  Widget _buildChipGroup({
+    required String label,
+    required String current,
+    required List<String> options,
+    required String Function(String) displayLabel,
+    required void Function(String?) onChanged,
+  }) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF6B7280))),
+        const SizedBox(height: 5),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: options.map((opt) {
+              final selected = opt == current;
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  selected: selected,
+                  label: Text(displayLabel(opt),
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                          color: selected ? primary : const Color(0xFF374151))),
+                  onSelected: (_) => onChanged(opt),
+                  backgroundColor: Colors.white,
+                  selectedColor: primary.withValues(alpha: 0.10),
+                  checkmarkColor: primary,
+                  showCheckmark: false,
+                  side: BorderSide(
+                      color: selected ? primary : const Color(0xFFD1D5DB),
+                      width: selected ? 1.5 : 1),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStatusFilters({bool compact = false}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(8),
@@ -1689,77 +1742,35 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Filtres',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF111827),
-            ),
+          const Text('Filtres',
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: Color(0xFF111827))),
+          const SizedBox(height: 10),
+          _buildChipGroup(
+            label: 'Statut facture',
+            current: _statusFilter,
+            options: _statusOptions,
+            displayLabel: _labelForBillingFilter,
+            onChanged: _applyBillingStatusFilter,
           ),
           const SizedBox(height: 10),
-          if (compact)
-            Column(
-              children: [
-                _buildDropdownFilter(
-                  label: 'Statut facture',
-                  value: _statusFilter,
-                  options: _statusOptions,
-                  displayLabel: (option) => _labelForBillingFilter(option),
-                  onChanged: _applyBillingStatusFilter,
-                ),
-                const SizedBox(height: 12),
-                _buildDropdownFilter(
-                  label: 'Statut mission',
-                  value: _workflowFilter,
-                  options: _workflowOptions,
-                  displayLabel: (option) => _labelForStatus(option),
-                  onChanged: _applyMissionStatusFilter,
-                ),
-                const SizedBox(height: 12),
-                _buildDropdownFilter(
-                  label: 'Type de mission',
-                  value: _missionTypeFilter,
-                  options: _missionTypeFilterOptions,
-                  displayLabel: (option) => _labelForMissionTypeFilter(option),
-                  onChanged: _applyMissionTypeFilter,
-                ),
-              ],
-            )
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDropdownFilter(
-                    label: 'Statut facture',
-                    value: _statusFilter,
-                    options: _statusOptions,
-                    displayLabel: (option) => _labelForBillingFilter(option),
-                    onChanged: _applyBillingStatusFilter,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildDropdownFilter(
-                    label: 'Statut mission',
-                    value: _workflowFilter,
-                    options: _workflowOptions,
-                    displayLabel: (option) => _labelForStatus(option),
-                    onChanged: _applyMissionStatusFilter,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildDropdownFilter(
-                    label: 'Type de mission',
-                    value: _missionTypeFilter,
-                    options: _missionTypeFilterOptions,
-                    displayLabel: (option) =>
-                        _labelForMissionTypeFilter(option),
-                    onChanged: _applyMissionTypeFilter,
-                  ),
-                ),
-              ],
-            ),
+          _buildChipGroup(
+            label: 'Statut mission',
+            current: _workflowFilter,
+            options: _workflowOptions,
+            displayLabel: _labelForStatus,
+            onChanged: _applyMissionStatusFilter,
+          ),
+          const SizedBox(height: 10),
+          _buildChipGroup(
+            label: 'Type de mission',
+            current: _missionTypeFilter,
+            options: _missionTypeFilterOptions,
+            displayLabel: _labelForMissionTypeFilter,
+            onChanged: _applyMissionTypeFilter,
+          ),
         ],
       ),
     );
@@ -2300,7 +2311,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
   }
 
   Widget _buildMissionPaginationToolbar() {
-    const pageSizes = [50, 100, 250, 500, 1000, 5000];
+    const pageSizes = [25, 50, 100, 250, 500];
     final int pageCount = _pageSize > 0 ? ((_total + _pageSize - 1) ~/ _pageSize).clamp(1, 99999) : 1;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2313,7 +2324,7 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
           const Text('Lignes :', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
           const SizedBox(width: 6),
           DropdownButton<int>(
-            value: pageSizes.contains(_pageSize) ? _pageSize : 1000,
+            value: pageSizes.contains(_pageSize) ? _pageSize : 25,
             isDense: true,
             underline: const SizedBox.shrink(),
             style: const TextStyle(fontSize: 12, color: Color(0xFF111827)),
@@ -2431,13 +2442,13 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
             child: IconTheme(
               data: IconThemeData(color: _primaryBlue),
               child: DataTable(
-                columnSpacing: 12,
-                headingRowHeight: 44,
-                horizontalMargin: 12,
-                checkboxHorizontalMargin: 8,
+                columnSpacing: 10,
+                headingRowHeight: 38,   // réduit 44 → 38
+                horizontalMargin: 10,
+                checkboxHorizontalMargin: 6,
                 showCheckboxColumn: false,
-                dataRowMinHeight: 40,
-                dataRowMaxHeight: 40,
+                dataRowMinHeight: 34,   // réduit 40 → 34
+                dataRowMaxHeight: 36,
                 sortColumnIndex: _sortColumnIndex,
                 sortAscending: _sortAscending,
                 columns: [
@@ -2691,7 +2702,9 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                   if (_visibleColumns['actions'] ?? true)
                     const DataColumn(label: Text('Actions')),
                 ],
-                rows: rowsData.map<DataRow>((m) {
+                rows: rowsData.asMap().entries.map<DataRow>((entry) {
+                  final idx = entry.key;
+                  final m = entry.value;
                   final rowId =
                       int.tryParse((m['rowid'] ?? '0').toString()) ?? 0;
                   final isBillable = _isMissionEligibleForBilling(m);
@@ -2964,8 +2977,13 @@ class _MissionsTablePageState extends State<MissionsTablePage> {
                       ),
                     );
                   }
+                  // Zebra striping : lignes paires légèrement colorées
+                  final zebraColor = idx.isOdd
+                      ? null
+                      : WidgetStateProperty.all(const Color(0xFFF8FAFC));
                   return DataRow(
                     selected: selected,
+                    color: selected ? null : zebraColor,
                     onSelectChanged: isBillable
                         ? (v) {
                             setState(() {

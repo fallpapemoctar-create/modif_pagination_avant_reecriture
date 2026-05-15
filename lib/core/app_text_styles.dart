@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Styles de texte centralisés — inspirés des conventions Dolibarr :
+/// Styles de texte centralisés — révisés pour une meilleure densité visuelle :
 ///   Texte général  : 12–13 px
-///   Menus          : 12–14 px
-///   Titres         : 16–20 px
+///   Menus / Nav    : 12–13 px (réduit depuis 14–15 px)
+///   Titres         : 16–18 px (réduit depuis 20 px)
 ///   Tableaux       : 12 px
 abstract class AppTextStyles {
   // ── Corps ──────────────────────────────────────────────────────────────────
@@ -27,20 +27,20 @@ abstract class AppTextStyles {
   // ── Labels / Champs ────────────────────────────────────────────────────────
   /// Label de champ de formulaire
   static const fieldLabel = TextStyle(
-    fontSize: 13,
+    fontSize: 12,           // réduit : 13 → 12
     fontWeight: FontWeight.w600,
     color: Color(0xFF374151),
   );
 
   /// Valeur lue seule (read-only)
   static const fieldValue = TextStyle(
-    fontSize: 13,
-    fontWeight: FontWeight.w600,
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
     color: Color(0xFF374151),
   );
 
   // ── Menus / Navigation ─────────────────────────────────────────────────────
-  /// Item de menu latéral
+  /// Item de menu / onglet
   static const menuItem = TextStyle(fontSize: 13, color: Color(0xFF161616));
 
   /// Item de menu actif
@@ -51,23 +51,23 @@ abstract class AppTextStyles {
   );
 
   // ── Titres ─────────────────────────────────────────────────────────────────
-  /// Titre de page
+  /// Titre de page (réduit 20 → 18 px)
   static const pageTitle = TextStyle(
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: FontWeight.w700,
     color: Color(0xFF161616),
   );
 
-  /// Titre de section / panneau
+  /// Titre de section / panneau (réduit 16 → 15 px)
   static const sectionTitle = TextStyle(
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: FontWeight.w700,
     color: Color(0xFF161616),
   );
 
-  /// Sous-titre / groupe
+  /// Sous-titre / groupe (réduit 14 → 13 px)
   static const subTitle = TextStyle(
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: FontWeight.w600,
     color: Color(0xFF374151),
   );
@@ -75,28 +75,28 @@ abstract class AppTextStyles {
   // ── Totaux / Montants ──────────────────────────────────────────────────────
   /// Total principal (bas de tableau)
   static const totalMain = TextStyle(
-    fontSize: 16,
+    fontSize: 14,           // réduit 16 → 14
     fontWeight: FontWeight.w700,
     color: Color(0xFF000091),
   );
 
   /// Total plein écran
   static const totalFullscreen = TextStyle(
-    fontSize: 18,
+    fontSize: 16,           // réduit 18 → 16
     fontWeight: FontWeight.w700,
     color: Color(0xFF000091),
   );
 
   /// Total TTC (accent bleu)
   static const totalTtc = TextStyle(
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: FontWeight.w700,
     color: Color(0xFF1D4ED8),
   );
 
   /// Total TTC plein écran
   static const totalTtcFullscreen = TextStyle(
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: FontWeight.w700,
     color: Color(0xFF1D4ED8),
   );

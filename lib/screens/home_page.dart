@@ -29,6 +29,7 @@ class HomePage extends StatelessWidget {
   // 🖥️ LAYOUT DESKTOP / WEB : TABBAR MODERNE
   // ------------------------------------------------------------
   Widget _buildDesktopLayout(UserRights rights, BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
     final tabs = <Tab>[];
     final views = <Widget>[];
 
@@ -79,17 +80,17 @@ class HomePage extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: const Color(0xFF000091),
+                            color: primary,
                             width: 2,
                           ),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text(
+                        child: Text(
                           'RF',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF000091),
+                            color: primary,
                             letterSpacing: 1.2,
                           ),
                         ),
@@ -102,7 +103,7 @@ class HomePage extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 17,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF161616),
                         ),
@@ -120,22 +121,22 @@ class HomePage extends StatelessWidget {
                     tabs: tabs,
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    labelColor: const Color(0xFF000091),
+                    labelColor: primary,
                     unselectedLabelColor: const Color(0xFF666666),
                     labelStyle: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
                     unselectedLabelStyle: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: FontWeight.w400,
                     ),
                     indicator: BoxDecoration(
                       color: const Color(0xFFF1F4FB),
                       borderRadius: BorderRadius.circular(10),
-                      border: const Border(
+                      border: Border(
                         bottom: BorderSide(
-                          color: Color(0xFF000091),
+                          color: primary,
                           width: 2.5,
                         ),
                       ),
@@ -152,7 +153,7 @@ class HomePage extends StatelessWidget {
                   Text(
                     'Bienvenue ${AuthManager.userFullName}',
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w400,
                       color: Color(0xFF3A3A3A),
                     ),
@@ -165,7 +166,7 @@ class HomePage extends StatelessWidget {
                     ),
                     child: IconButton(
                       icon: const Icon(Icons.logout, size: 20),
-                      color: const Color(0xFF000091),
+                      color: primary,
                       iconSize: 20,
                       padding: const EdgeInsets.all(12),
                       constraints: const BoxConstraints(
@@ -203,6 +204,7 @@ class HomePage extends StatelessWidget {
   // 📱 LAYOUT MOBILE : DASHBOARD EN CARTES
   // ------------------------------------------------------------
   Widget _buildMobileLayout(UserRights rights, BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
     return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),
       appBar: AppBar(
@@ -223,7 +225,7 @@ class HomePage extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: const Color(0xFF000091),
+                    color: primary,
                     width: ResponsiveHelper.isMobile(context) ? 1.5 : 2,
                   ),
                   borderRadius: BorderRadius.circular(0),
@@ -233,7 +235,7 @@ class HomePage extends StatelessWidget {
                   style: TextStyle(
                     fontSize: ResponsiveHelper.isMobile(context) ? 12 : 16,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF000091),
+                    color: primary,
                     letterSpacing: 1.5,
                   ),
                 ),
@@ -276,7 +278,7 @@ class HomePage extends StatelessWidget {
             ),
             child: IconButton(
               icon: const Icon(Icons.logout, size: 20),
-              color: const Color(0xFF000091),
+              color: primary,
               iconSize: 20,
               padding: const EdgeInsets.all(12),
               constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
@@ -308,7 +310,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.people,
                 label: "Interprètes",
-                color: const Color(0xFF000091),
+                color: primary,
                 onTap: () => Navigator.pushNamed(context, "/interpreters"),
               ),
             if (rights.canManageMissions() || rights.isAdmin())
@@ -316,7 +318,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.table_view,
                 label: "Missions",
-                color: const Color(0xFF000091),
+                color: primary,
                 onTap: () => Navigator.pushNamed(context, "/missions-table"),
               ),
             if (rights.canManageMissions() || rights.isAdmin())
@@ -324,7 +326,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.receipt_long,
                 label: "Facturation",
-                color: const Color(0xFF000091),
+                color: primary,
                 onTap: () => Navigator.pushNamed(context, "/billing"),
               ),
             if (rights.canManageMissions() || rights.isAdmin())
@@ -332,7 +334,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.apartment,
                 label: "Tiers",
-                color: const Color(0xFF000091),
+                color: primary,
                 onTap: () => Navigator.pushNamed(context, "/requesters"),
               ),
             if (rights.isAdmin())
@@ -340,7 +342,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.admin_panel_settings,
                 label: "Admin",
-                color: const Color(0xFF000091),
+                color: primary,
                 onTap: () => Navigator.pushNamed(context, "/admin"),
               ),
             if (rights.isAdmin())
@@ -348,7 +350,7 @@ class HomePage extends StatelessWidget {
                 context: context,
                 icon: Icons.download,
                 label: "Export",
-                color: const Color(0xFF000091),
+                color: primary,
                 onTap: () => Navigator.pushNamed(context, "/export"),
               ),
           ],

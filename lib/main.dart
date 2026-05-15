@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/app_config.dart';
-import 'core/app_text_styles.dart';
+import 'core/app_theme.dart';
 
 import 'screens/login_page.dart';
 import 'screens/home_page.dart';
@@ -13,6 +13,9 @@ import 'pages/missions_table_page.dart';
 import 'pages/company_info_page.dart';
 import 'pages/requesters_management_page.dart';
 import 'core/auth_manager.dart';
+
+// ── Thème actif — changer ici pour basculer : bleuOfficiel / ardoise / nuit
+const AmiThemeId kActiveTheme = AmiThemeId.nuit;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,45 +34,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'AMI - Assistance missions interprètes',
-      theme: ThemeData(
-        primaryColor: const Color(0xFF000091), // Bleu France
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF000091),
-          primary: const Color(0xFF000091),
-          secondary: const Color(0xFFE1000F), // Rouge Marianne
-        ),
-        // Fond global en gris pâle
-        scaffoldBackgroundColor: const Color(0xFFF6F6F6),
-        // TextTheme centralisé — style Dolibarr
-        // Texte général 12-13 px | Tableaux 12 px | Titres 16-20 px | Menus 12-14 px
-        textTheme: const TextTheme(
-          // Corps
-          bodyLarge:   AppTextStyles.body,       // 13 px — contenu principal
-          bodyMedium:  AppTextStyles.body,       // 13 px — défaut Flutter
-          bodySmall:   AppTextStyles.bodySmall,  // 12 px — secondaire / notes
-          // Titres
-          titleLarge:  AppTextStyles.pageTitle,      // 20 px
-          titleMedium: AppTextStyles.sectionTitle,   // 16 px
-          titleSmall:  AppTextStyles.subTitle,       // 14 px
-          // Labels
-          labelLarge:  AppTextStyles.fieldLabel,     // 13 px bold
-          labelMedium: AppTextStyles.tableHeader,    // 12 px bold — en-têtes tableau
-          labelSmall:  AppTextStyles.badge,          // 11 px — badges
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF8F9FA),
-          foregroundColor: Color(0xFF000091),
-          elevation: 1,
-          iconTheme: IconThemeData(color: Color(0xFF000091)),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF000091),
-            foregroundColor: Colors.white,
-          ),
-        ),
-        fontFamily: 'Marianne', // Utilise Marianne si disponible
-      ),
+      theme: AmiTheme.of(kActiveTheme),
       home: startOnHome ? const HomePage() : const LoginPage(),
       routes: {
         '/login': (context) => const LoginPage(),

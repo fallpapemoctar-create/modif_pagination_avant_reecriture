@@ -245,7 +245,7 @@ class _BillingPageState extends State<BillingPage> {
 
   // Pagination du tableau des lignes de mission
   int _missionTablePage = 1;
-  int _missionTablePageSize = 100;
+  int _missionTablePageSize = 25;
   String _missionTableSearch = '';
   final TextEditingController _missionTableSearchCtrl = TextEditingController();
 
@@ -286,6 +286,8 @@ class _BillingPageState extends State<BillingPage> {
   int _invoicePage = 1;
   final int _invoicePageSize = 1000;
   int _invoiceTotal = 0;
+  int _invoiceDisplayPage = 1;
+  static const int _invoiceDisplayPageSize = 25;
   String _invoiceClientFilter = 'Tous les clients';
   String _invoiceMonthFilter = 'Tous les mois';
   String _invoiceStatusFilter = 'Tous les statuts';
@@ -468,7 +470,10 @@ class _BillingPageState extends State<BillingPage> {
 
   Widget _buildInvoiceListFooter({
     required List<ClientInvoiceSummary> invoices,
+    required int allFilteredCount,
     required bool compact,
+    required int pageCount,
+    required int displayPage,
   }) {
     final activeInvoices = invoices.where(
       (inv) => inv.statusCode.trim().toLowerCase() != 'cancelled' &&
@@ -482,8 +487,9 @@ class _BillingPageState extends State<BillingPage> {
               ? invoice.invoiceTotalHt
               : invoice.amountHt),
     );
-    final summary =
-        '${invoices.length} facture${invoices.length > 1 ? 's' : ''} affichée${invoices.length > 1 ? 's' : ''}';
+    final summary = allFilteredCount > _invoiceDisplayPageSize
+        ? '${invoices.length} / $allFilteredCount facture${allFilteredCount > 1 ? 's' : ''}'
+        : '$allFilteredCount facture${allFilteredCount > 1 ? 's' : ''} affichée${allFilteredCount > 1 ? 's' : ''}';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
@@ -502,25 +508,72 @@ class _BillingPageState extends State<BillingPage> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      summary,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    'Total: ${_formatCurrency(totalDisplayed)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
-                    ),
-                  ),
-                ],
+          children: [
+            Expanded(
+              child: Text(
+                summary,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                ),
               ),
+            ),
+            if (pageCount > 1) ...[
+              IconButton(
+                onPressed: displayPage > 1
+                    ? () => setState(() => _invoiceDisplayPage = 1)
+                    : null,
+                icon: const Icon(Icons.first_page, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                tooltip: 'Première page',
+              ),
+              IconButton(
+                onPressed: displayPage > 1
+                    ? () => setState(() => _invoiceDisplayPage = displayPage - 1)
+                    : null,
+                icon: const Icon(Icons.chevron_left, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                tooltip: 'Page précédente',
+              ),
+              Text(
+                '$displayPage / $pageCount',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              IconButton(
+                onPressed: displayPage < pageCount
+                    ? () => setState(() => _invoiceDisplayPage = displayPage + 1)
+                    : null,
+                icon: const Icon(Icons.chevron_right, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                tooltip: 'Page suivante',
+              ),
+              IconButton(
+                onPressed: displayPage < pageCount
+                    ? () => setState(() => _invoiceDisplayPage = pageCount)
+                    : null,
+                icon: const Icon(Icons.last_page, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                tooltip: 'Dernière page',
+              ),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              'Total: ${_formatCurrency(totalDisplayed)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF334155),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1443,8 +1496,12 @@ class _BillingPageState extends State<BillingPage> {
   ) {
     final line = editor.currentLine;
     final ref = editor.missionRef ?? line.missionRef ?? '-';
+    final zebraColor = index.isEven
+        ? null
+        : WidgetStateProperty.all(const Color(0xFFF8FAFC));
     return DataRow(
       selected: _selectedLineIndex == index,
+      color: _selectedLineIndex == index ? null : zebraColor,
       onSelectChanged: (_) => _openLineEditor(index),
       cells: [
         DataCell(
@@ -1759,32 +1816,31 @@ class _BillingPageState extends State<BillingPage> {
                 borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
             ),
-            onChanged: (value) => setState(() => _invoiceSearchQuery = value),
+            onChanged: (value) => setState(() {
+              _invoiceSearchQuery = value;
+              _invoiceDisplayPage = 1;
+            }),
           ),
           _buildInvoiceFilterDropdown(
             value: _invoiceMonthFilter,
             items: _invoiceMonthOptions,
             icon: Icons.calendar_month_outlined,
-            onChanged: (value) =>
-                setState(() => _invoiceMonthFilter = value ?? 'Tous les mois'),
+            onChanged: (value) => setState(() {
+              _invoiceMonthFilter = value ?? 'Tous les mois';
+              _invoiceDisplayPage = 1;
+            }),
           ),
-          _buildInvoiceFilterDropdown(
-            value: _invoiceStatusFilter,
-            items: _invoiceStatusOptions,
-            icon: Icons.flag_outlined,
-            onChanged: (value) {
-              final next = value ?? 'Tous les statuts';
-              setState(() => _invoiceStatusFilter = next);
-              _loadInvoices(reset: true);
-            },
-          ),
+          _buildBillingStatusChips(),
           _buildInvoiceFilterDropdown(
             value: _invoiceClientFilter,
             items: _invoiceClientOptions,
             icon: Icons.business_outlined,
             onChanged: (value) {
               final next = value ?? 'Tous les clients';
-              setState(() => _invoiceClientFilter = next);
+              setState(() {
+                _invoiceClientFilter = next;
+                _invoiceDisplayPage = 1;
+              });
               _loadInvoices(reset: true);
             },
           ),
@@ -1837,8 +1893,10 @@ class _BillingPageState extends State<BillingPage> {
                         borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                       ),
                     ),
-                    onChanged: (value) =>
-                        setState(() => _invoiceSearchQuery = value),
+                    onChanged: (value) => setState(() {
+                      _invoiceSearchQuery = value;
+                      _invoiceDisplayPage = 1;
+                    }),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1848,25 +1906,14 @@ class _BillingPageState extends State<BillingPage> {
                     value: _invoiceMonthFilter,
                     items: _invoiceMonthOptions,
                     icon: Icons.calendar_month_outlined,
-                    onChanged: (value) => setState(
-                      () => _invoiceMonthFilter = value ?? 'Tous les mois',
-                    ),
+                    onChanged: (value) => setState(() {
+                      _invoiceMonthFilter = value ?? 'Tous les mois';
+                      _invoiceDisplayPage = 1;
+                    }),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  flex: 18,
-                  child: _buildInvoiceFilterDropdown(
-                    value: _invoiceStatusFilter,
-                    items: _invoiceStatusOptions,
-                    icon: Icons.flag_outlined,
-                    onChanged: (value) {
-                      final next = value ?? 'Tous les statuts';
-                      setState(() => _invoiceStatusFilter = next);
-                      _loadInvoices(reset: true);
-                    },
-                  ),
-                ),
+                _buildBillingStatusChips(),
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 20,
@@ -1876,7 +1923,10 @@ class _BillingPageState extends State<BillingPage> {
                     icon: Icons.business_outlined,
                     onChanged: (value) {
                       final next = value ?? 'Tous les clients';
-                      setState(() => _invoiceClientFilter = next);
+                      setState(() {
+                        _invoiceClientFilter = next;
+                        _invoiceDisplayPage = 1;
+                      });
                       _loadInvoices(reset: true);
                     },
                   ),
@@ -1974,6 +2024,46 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
+  Widget _buildBillingStatusChips() {
+    final primary = Theme.of(context).colorScheme.primary;
+    final options = _invoiceStatusOptions; // includes 'Tous les statuts'
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: options.map((opt) {
+        final selected = _invoiceStatusFilter == opt;
+        return ChoiceChip(
+          label: Text(
+            opt == 'Tous les statuts' ? 'Tous' : opt,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : const Color(0xFF374151),
+            ),
+          ),
+          selected: selected,
+          selectedColor: primary,
+          backgroundColor: const Color(0xFFF1F5F9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: selected ? primary : const Color(0xFFE5E7EB),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          visualDensity: VisualDensity.compact,
+          onSelected: (_) {
+            setState(() {
+              _invoiceStatusFilter = opt;
+              _invoiceDisplayPage = 1;
+            });
+            _loadInvoices(reset: true);
+          },
+        );
+      }).toList(),
+    );
+  }
+
   Widget _buildInvoiceFilterDropdown({
     required String value,
     required List<String> items,
@@ -2028,14 +2118,19 @@ class _BillingPageState extends State<BillingPage> {
         subtitle: 'Modifiez les filtres pour relancer la recherche.',
       );
     }
-    final invoices = _filteredInvoicesForDisplay;
+    final allFiltered = _filteredInvoicesForDisplay;
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 1240;
+        final pageCount = (allFiltered.length / _invoiceDisplayPageSize).ceil().clamp(1, 99999).toInt();
+        final displayPage = _invoiceDisplayPage.clamp(1, pageCount);
+        final startIdx = (displayPage - 1) * _invoiceDisplayPageSize;
+        final endIdx = (startIdx + _invoiceDisplayPageSize).clamp(0, allFiltered.length);
+        final invoices = allFiltered.isEmpty ? allFiltered : allFiltered.sublist(startIdx, endIdx);
         return Column(
           children: [
             Expanded(
-              child: invoices.isEmpty
+              child: allFiltered.isEmpty
                   ? _buildInvoiceStateCard(
                       icon: Icons.filter_alt_off_outlined,
                       title: 'Aucun résultat',
@@ -2046,10 +2141,13 @@ class _BillingPageState extends State<BillingPage> {
                   ? _buildCompactInvoiceList(invoices)
                   : _buildInvoiceDesktopTable(invoices),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildInvoiceListFooter(
               invoices: invoices,
+              allFilteredCount: allFiltered.length,
               compact: isCompact,
+              pageCount: pageCount,
+              displayPage: displayPage,
             ),
           ],
         );
@@ -2166,10 +2264,13 @@ class _BillingPageState extends State<BillingPage> {
                 final invoice = invoices[index];
                 final isSelected =
                     invoice.invoiceNumber == selectedInvoiceNumber;
+                final zebraColor = index.isOdd
+                    ? const Color(0xFFF8FAFC)
+                    : Colors.white;
                 return InkWell(
                   onTap: () => _openInvoiceDetails(invoice),
                   child: Container(
-                    color: isSelected ? const Color(0xFFF8FAFC) : Colors.white,
+                    color: isSelected ? const Color(0xFFEEF2FF) : zebraColor,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 14,
@@ -3012,7 +3113,7 @@ class _BillingPageState extends State<BillingPage> {
   }
 
   Widget _buildMissionTableToolbar(double spacing) {
-    const pageSizes = <int>[50, 100, 250, 500, 1000, 5000];
+    const pageSizes = <int>[25, 50, 100, 250, 500];
     final filteredCount = _missionTableFilteredCount;
     final pageCount = _missionTablePageCount;
     return Container(
@@ -3166,8 +3267,8 @@ class _BillingPageState extends State<BillingPage> {
                 constraints: BoxConstraints(minWidth: tableWidth),
                 child: DataTable(
                   columnSpacing: 12,
-                  headingRowHeight: 42,
-                  dataRowMinHeight: 60,
+                  headingRowHeight: 38,
+                  dataRowMinHeight: 40,
                   dataRowMaxHeight: 140,
                   columns: [
                     DataColumn(
