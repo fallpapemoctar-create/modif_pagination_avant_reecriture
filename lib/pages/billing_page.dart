@@ -725,7 +725,7 @@ class _BillingPageState extends State<BillingPage> {
   }
 
   Widget _buildSidebar(BuildContext context) {
-    const collapsedWidth = 68.0;
+    const collapsedWidth = 76.0;
     const expandedWidth = 240.0;
     final collapsed = _sidebarCollapsed;
     final horizontalPadding = collapsed ? 8.0 : 12.0;
@@ -814,64 +814,6 @@ class _BillingPageState extends State<BillingPage> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              12,
-              horizontalPadding,
-              16,
-            ),
-            child: Column(
-              crossAxisAlignment: collapsed
-                  ? CrossAxisAlignment.center
-                  : CrossAxisAlignment.start,
-              children: [
-                if (!collapsed) ...[
-                  const Text(
-                    'Détail des lignes de facturation',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                ],
-                Text(
-                  '${_lineEditors.length} ligne(s)',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                if (collapsed)
-                  IconButton(
-                    icon: Icon(
-                      _isTableFullscreen
-                          ? Icons.fullscreen_exit
-                          : Icons.fullscreen,
-                    ),
-                    onPressed: _lineEditors.isEmpty
-                        ? null
-                        : () => _toggleTableFullscreen(!_isTableFullscreen),
-                    tooltip: _isTableFullscreen
-                        ? 'Quitter le plein écran'
-                        : 'Afficher en plein écran',
-                  )
-                else
-                  OutlinedButton.icon(
-                    onPressed: _lineEditors.isEmpty
-                        ? null
-                        : () => _toggleTableFullscreen(!_isTableFullscreen),
-                    icon: Icon(
-                      _isTableFullscreen
-                          ? Icons.fullscreen_exit
-                          : Icons.fullscreen,
-                    ),
-                    label: Text(
-                      _isTableFullscreen
-                          ? 'Quitter le plein écran'
-                          : 'Voir en plein écran',
-                    ),
-                  ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -932,11 +874,15 @@ class _BillingPageState extends State<BillingPage> {
                 onChanged: (value) => setState(() {
                   _clientInput = value;
                   _selectedClientId = null; // reset when user types manually
+                  _clientPaymentTerms = [];
+                  _selectedClientPaymentTermId = null;
                   _creationClientInvoices.clear();
                 }),
-                onSummarySelected: (summary) => setState(() {
-                  _selectedClientId = summary.id > 0 ? summary.id : null;
-                }),
+                onSummarySelected: (summary) {
+                  final newClientId = summary.id > 0 ? summary.id : null;
+                  setState(() => _selectedClientId = newClientId);
+                  unawaited(_loadPaymentTermsByClientId(newClientId));
+                },
                 onSelected: (_) {},
                 onSubmitted: (_) {},
                 trailingBuilder: (context, controller, loading) => [
@@ -1413,19 +1359,6 @@ class _BillingPageState extends State<BillingPage> {
                       ],
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    _isTableFullscreen
-                        ? Icons.fullscreen_exit
-                        : Icons.fullscreen,
-                  ),
-                  onPressed: _lineEditors.isEmpty
-                      ? null
-                      : () => _toggleTableFullscreen(!_isTableFullscreen),
-                  tooltip: _isTableFullscreen
-                      ? 'Quitter le plein écran'
-                      : 'Afficher en plein écran',
                 ),
               ],
             ),
@@ -3233,17 +3166,22 @@ class _BillingPageState extends State<BillingPage> {
             .map((ratio) => tableWidth * ratio)
             .toList();
         return Scrollbar(
-          controller: verticalController,
+          controller: horizontalController,
           thumbVisibility: true,
-          child: SingleChildScrollView(
+          notificationPredicate: (notif) => notif.depth == 1,
+          child: Scrollbar(
             controller: verticalController,
-            scrollDirection: Axis.vertical,
+            thumbVisibility: true,
+            notificationPredicate: (notif) => notif.depth == 0,
             child: SingleChildScrollView(
-              controller: horizontalController,
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: tableWidth),
-                child: DataTable(
+              controller: verticalController,
+              scrollDirection: Axis.vertical,
+              child: SingleChildScrollView(
+                controller: horizontalController,
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minWidth: tableWidth + 160),
+                  child: DataTable(
                   columnSpacing: 12,
                   headingRowHeight: 38,
                   dataRowMinHeight: 40,
@@ -3300,13 +3238,13 @@ class _BillingPageState extends State<BillingPage> {
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[8],
-                        child: const Text('Total HT'),
+                        child: const Text('Total HT', textAlign: TextAlign.right),
                       ),
                     ),
                     DataColumn(
                       label: SizedBox(
                         width: columnWidths[9],
-                        child: const Text('Total TTC'),
+                        child: const Text('Total TTC', textAlign: TextAlign.right),
                       ),
                     ),
                   ],
@@ -3316,6 +3254,7 @@ class _BillingPageState extends State<BillingPage> {
                             _buildRow(entry.key, entry.value, columnWidths),
                       )
                       .toList(),
+                  ),
                 ),
               ),
             ),
@@ -6547,6 +6486,41 @@ class _BillingPageState extends State<BillingPage> {
       debugPrint(stack.toString());
       if (!mounted) return;
       setState(() => _loadingCompanyBankAccounts = false);
+    }
+  }
+
+  Future<void> _loadPaymentTermsByClientId(int? clientId) async {
+    if (clientId == null || clientId <= 0) {
+      if (!mounted) return;
+      setState(() {
+        _clientPaymentTerms = [];
+        _selectedClientPaymentTermId = null;
+      });
+      return;
+    }
+    if (mounted) setState(() => _loadingClientPaymentTerms = true);
+    try {
+      final result = await BillingService.getClientPaymentTerms(
+        clientId: clientId,
+      );
+      final selectedId = _resolveSelectedClientPaymentTermId(
+        terms: result.paymentTerms,
+        currentSelectedId: _selectedClientPaymentTermId,
+        defaultTermId: result.defaultTermId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _clientPaymentTerms = result.paymentTerms;
+        _selectedClientPaymentTermId = selectedId;
+        _loadingClientPaymentTerms = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _clientPaymentTerms = [];
+        _selectedClientPaymentTermId = null;
+        _loadingClientPaymentTerms = false;
+      });
     }
   }
 
