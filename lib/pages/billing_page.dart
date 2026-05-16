@@ -922,10 +922,10 @@ class _BillingPageState extends State<BillingPage> {
         LayoutBuilder(
           builder: (context, constraints) {
             final isCompact = constraints.maxWidth < 960;
-            final isWideDesktop = constraints.maxWidth >= 1180;
+            final isWideDesktop = constraints.maxWidth >= 1300;
             final clientField = _buildToolbarField(
               label: 'Client',
-              width: isCompact ? constraints.maxWidth : 300.0,
+              width: isCompact ? constraints.maxWidth : isWideDesktop ? null : 300.0,
               child: ClientAutocompleteField(
                 value: _clientInput,
                 hintText: 'Sélectionner un client',
@@ -956,7 +956,7 @@ class _BillingPageState extends State<BillingPage> {
             );
             final monthField = _buildToolbarField(
               label: 'Mois',
-              width: isCompact ? constraints.maxWidth : 220.0,
+              width: isCompact ? constraints.maxWidth : isWideDesktop ? null : 220.0,
               child: DropdownButtonFormField<DateTime>(
                 initialValue: _selectedMonth,
                 isExpanded: true,
@@ -981,7 +981,7 @@ class _BillingPageState extends State<BillingPage> {
             );
             final bankField = _buildToolbarField(
               label: 'Compte bancaire',
-              width: isCompact ? constraints.maxWidth : 320.0,
+              width: isCompact ? constraints.maxWidth : isWideDesktop ? null : 320.0,
               child: DropdownButtonFormField<int>(
                 key: ValueKey(_selectedCompanyBankAccountId),
                 initialValue: _selectedCompanyBankAccountId,
@@ -1020,7 +1020,7 @@ class _BillingPageState extends State<BillingPage> {
             );
             final paymentTermField = _buildToolbarField(
               label: 'Condition de règlement',
-              width: isCompact ? constraints.maxWidth : 340.0,
+              width: isCompact ? constraints.maxWidth : isWideDesktop ? null : 340.0,
               child: DropdownButtonFormField<int>(
                 key: ValueKey(_selectedClientPaymentTermId),
                 initialValue: _selectedClientPaymentTermId,
@@ -1057,38 +1057,23 @@ class _BillingPageState extends State<BillingPage> {
             );
 
             if (isWideDesktop) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildPreparationTopBar(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        clientField,
-                        const SizedBox(width: 18),
-                        monthField,
-                        const SizedBox(width: 18),
-                        Container(
-                          width: 1,
-                          height: 46,
-                          color: const Color(0xFFE2E8F0),
-                        ),
-                        const SizedBox(width: 18),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.bottomRight,
-                            child: _buildToolbarButtons(allowWrap: false),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _buildCollapsibleSettings(
-                    fields: [paymentTermField, bankField],
-                    compact: false,
-                  ),
-                ],
+              return _buildPreparationTopBar(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(flex: 5, child: clientField),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 3, child: monthField),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 4, child: paymentTermField),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 4, child: bankField),
+                    const SizedBox(width: 12),
+                    Container(width: 1, height: 46, color: const Color(0xFFE2E8F0)),
+                    const SizedBox(width: 12),
+                    _buildToolbarButtons(allowWrap: false),
+                  ],
+                ),
               );
             }
 
