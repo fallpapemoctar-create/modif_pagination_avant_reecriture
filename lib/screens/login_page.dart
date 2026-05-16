@@ -308,19 +308,6 @@ class _LoginPageState extends State<LoginPage> {
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
             ),
           ),
-          const SizedBox(height: 16),
-
-          // ── Mot de passe oublié ──
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              foregroundColor: primary,
-              padding: EdgeInsets.zero,
-              minimumSize: Size.zero,
-            ),
-            child: const Text('Mot de passe oublié ?',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-          ),
         ],
       ),
     );
